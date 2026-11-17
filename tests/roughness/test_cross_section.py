@@ -117,3 +117,35 @@ def test_mu_h_matches_numeric_mean_and_scales_with_energy(obj):
     assert obj.mu_h == pytest.approx(2 * k * np.imag(obj.dn_A * f0), rel=1e-4)
     doubled = replace(obj, energy_ev=2 * obj.energy_ev)
     assert doubled.mu_h == pytest.approx(2 * obj.mu_h, rel=1e-12)
+
+
+def _born_orders(xs, dz, omegas=(0.0, 10.0)):
+    from cd_reduce.simulation import simulate_born_2d
+
+    m2 = to_index_map_2d(xs, nx=160, nz=round(xs.height / dz), energy_ev=285.0)
+    res = simulate_born_2d(m2, omega_deg=np.asarray(omegas), max_order=4)
+    return {m: np.asarray(res.order_efficiencies[m]) for m in (1, 2, 3, 4)}
+
+
+def test_z_filling_converges_in_dz():
+    xs = LatentFilm(
+        80.0,
+        45.0,
+        2.5,
+        40.0,
+        4.0,
+        25.0,
+        1.15 + 0.05j,
+        -2e-3 + 1.5e-3j,
+        energy_ev=285.0,
+    )
+    ref = _born_orders(xs, 0.05)
+    tol = {2.0: None, 1.0: 0.015, 0.5: 0.005}
+    for dz, t in tol.items():
+        got = _born_orders(xs, dz)
+        err = max(float(np.max(np.abs(got[m] / ref[m] - 1))) for m in got)
+        print(f"dz={dz}: max rel err over m=1..4, omega=0,10: {err:.4f}")
+        for m in got:
+            print(f"  m={m}: {np.abs(got[m] / ref[m] - 1)}")
+        if t is not None:
+            assert err <= t, (dz, err)

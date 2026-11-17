@@ -50,6 +50,9 @@ class CrossSection(Protocol):
     def delta_n_line(
         self, x_rel: ArrayLike, u_left: ArrayLike, u_right: ArrayLike, z: ArrayLike
     ) -> CArr: ...
+    def surface_height(
+        self, x_rel: ArrayLike, u_left: ArrayLike, u_right: ArrayLike
+    ) -> FArr: ...
     def zeros_qz(self, qz_max: float) -> FArr: ...
 
 
@@ -153,6 +156,12 @@ class LatentFilm(_Base):
         inside = (z >= 0) & (z < self.h - self.dh * p)
         return np.where(inside, dn, 0.0 + 0.0j)
 
+    def surface_height(
+        self, x_rel: ArrayLike, u_left: ArrayLike, u_right: ArrayLike
+    ) -> FArr:
+        """Local top surface ``T = h - dh * p`` (nm), shrunk where exposed."""
+        return self.h - self.dh * _exposed(x_rel, self.w, self.s, u_left, u_right)
+
 
 @dataclass(frozen=True)
 class DevelopedLine(_Base):
@@ -184,26 +193,65 @@ class DevelopedLine(_Base):
         inside = (z >= 0) & (z < self.h_d)
         return np.where(inside, self.dn_A * (1 - p), 0.0 + 0.0j)
 
+    def surface_height(
+        self, x_rel: ArrayLike, u_left: ArrayLike, u_right: ArrayLike
+    ) -> FArr:
+        """Top surface ``h_d`` everywhere; the lateral profile is the ``1 - p``."""
+        shape = np.broadcast(
+            np.asarray(x_rel), np.asarray(u_left), np.asarray(u_right)
+        ).shape
+        return np.full(shape, float(self.h_d))
+
     def zeros_qz(self, qz_max: float) -> FArr:
         n = int(np.floor(qz_max * self.h_d / (2 * np.pi)))
         pos = 2 * np.pi * np.arange(1, n + 1) / self.h_d
         return np.concatenate([-pos[::-1], pos])
 
 
+def cell_averaged_delta_n(
+    xs: CrossSection,
+    x_rel: ArrayLike,
+    u_left: ArrayLike,
+    u_right: ArrayLike,
+    z_lo: ArrayLike,
+    dz: float,
+) -> CArr:
+    """Volume-fraction ``(1/dz) int_{z_lo}^{z_lo+dz} delta_n dz`` of z cells.
+
+    The film occupies ``0 <= z < T`` with ``T = xs.surface_height(x, u_L, u_R)``.
+    Each cell's filled interval ``[max(z_lo, 0), min(z_lo + dz, T))`` gets the
+    filled fraction ``f`` times ``delta_n_line`` at the interval's midpoint (the
+    midpoint rule on the filled part; the integrand varies slowly in z). Full
+    cells therefore use their centre, as before. This makes the hard surfaces at
+    ``z = T(x)`` and ``z = 0`` converge at second order in ``dz`` instead of first.
+    """
+    z_lo = np.asarray(z_lo, dtype=np.float64)
+    top = xs.surface_height(x_rel, u_left, u_right)
+    lo = np.maximum(z_lo, 0.0)
+    hi = np.minimum(z_lo + dz, top)
+    frac = np.clip((hi - lo) / dz, 0.0, 1.0)
+    z_mid = np.where(frac > 0, 0.5 * (lo + hi), z_lo + 0.5 * dz)
+    dn = xs.delta_n_line(x_rel, u_left, u_right, z_mid)
+    return np.where(frac > 0, dn * frac, 0.0 + 0.0j)
+
+
 def to_index_map_2d(
     xs: CrossSection, *, nx: int, nz: int, energy_ev: float
 ) -> RefractiveIndexMap2D:
-    """Sample ``delta_n_line(x, 0, 0, z)`` on one period as a 2D index map.
+    """Cell-average ``delta_n_line(x, 0, 0, z)`` on one period as a 2D index map.
 
-    ``delta = -Re(dn)``, ``beta = Im(dn)``, vacuum reference. Cells are centred on
-    ``x`` in ``[-L/2, L/2)`` and ``z`` in ``[0, height)``.
+    z cells are filled by volume fraction (`cell_averaged_delta_n`), the same
+    filling as `build_rough_grating_3d`. ``delta = -Re(dn)``, ``beta = Im(dn)``,
+    vacuum reference. Cells are centred on ``x`` in ``[-L/2, L/2)``
+    and ``z`` in ``[0, height)``.
     """
     from cd_reduce.simulation.structures import RefractiveIndexMap2D
 
     height = float(xs.height)
     x = (np.arange(nx) + 0.5) * (xs.L / nx) - xs.L / 2
-    z = (np.arange(nz) + 0.5) * (height / nz)
-    dn = xs.delta_n_line(x[:, None], 0.0, 0.0, z[None, :])
+    dz = height / nz
+    z = (np.arange(nz) + 0.5) * dz
+    dn = cell_averaged_delta_n(xs, x[:, None], 0.0, 0.0, z[None, :] - 0.5 * dz, dz)
     return RefractiveIndexMap2D(
         x_nm=x,
         z_nm=z,

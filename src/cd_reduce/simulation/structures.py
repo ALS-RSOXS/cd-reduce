@@ -817,8 +817,10 @@ def build_rough_grating_3d(
     cell centres are `(i + 0.5) * L/nx_per - L/2` (identical to `to_index_map_2d`).
     Each line gets independent placement `P_j(y)` and width `W_j(y)` fields, with
     edges `u_L = P - W/2`, `u_R = P + W/2`. Cell `delta_n` is
-    `xs.delta_n_line(x - jL, u_L[y], u_R[y], z)`, mapped to `delta = -Re`,
-    `beta = Im` with a vacuum reference. z spans `[0, xs.height)`.
+    the z-cell average of `xs.delta_n_line(x - jL, u_L[y], u_R[y], z)` with the
+    film surfaces filled by volume fraction (`cell_averaged_delta_n`, the same
+    filling as `to_index_map_2d`), mapped to `delta = -Re`, `beta = Im` with a
+    vacuum reference. z spans `[0, xs.height)`.
 
     Raises
     ------
@@ -848,13 +850,18 @@ def build_rough_grating_3d(
             f"{limit:g} nm; neighbouring lines overlap"
         )
 
+    from cd_reduce.reduction.roughness.cross_section import cell_averaged_delta_n
+
+    dz = float(xs.height) / nz
     blocks = []
     for j in range(int(n_lines)):
-        dn = xs.delta_n_line(
+        dn = cell_averaged_delta_n(
+            xs,
             x_cell[:, None, None],
             u_left[j][None, :, None],
             u_right[j][None, :, None],
-            z[None, None, :],
+            z[None, None, :] - 0.5 * dz,
+            dz,
         )
         blocks.append(dn)
     dn_all = np.concatenate(blocks, axis=0)
