@@ -11,6 +11,7 @@ from cd_reduce.reduction.roughness import (
     DevelopedLine,
     LatentFilm,
     psd_palasantzas,
+    sigma_from_psd,
 )
 
 GEOMETRY = Geometry(
@@ -51,8 +52,6 @@ def developed(E: float) -> DevelopedLine:
 
 def sigma_ler_full(psd_lpr, psd_lwr) -> float:
     """Debye-Waller edge rms: sqrt(sigma_LPR^2 + sigma_LWR^2 / 4)."""
-    from cd_reduce.reduction.roughness import sigma_from_psd
-
     s2 = 0.0
     for psd, c in ((psd_lpr, 1.0), (psd_lwr, 0.25)):
         if psd is not None:

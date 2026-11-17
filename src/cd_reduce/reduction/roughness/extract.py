@@ -158,8 +158,9 @@ def fit_psds(
             continue
         wt = 1.0 / v
         N = A.T @ (A * wt[:, None])
+        with np.errstate(all="ignore"):
+            cond[i] = np.linalg.cond(N)
         inv = np.linalg.inv(N)
-        cond[i] = c
         r = m - A @ beta
         dof = n - p
         c2 = float(np.sum(wt * r * r) / dof) if dof > 0 else np.nan
@@ -332,7 +333,13 @@ def quick_ler(pixels: ReducedPixels, w: float, f_edges: Arr) -> tuple[Arr, Arr]:
             continue
         mbar = float(pixels.M[s].mean())
         S[i] = mbar / 2
-        v = _model_var(np.full(n, mbar), m_pp[s], read, pixels.var_M[s])
+        mm = m_pp[s]
+        # E[photons_i] = M_i / m_i, so m_i^2 E[photons_i] = m_i M_i (linear in M)
+        v = np.where(
+            np.isfinite(mm),
+            mm * np.maximum(pixels.M[s], 0.0) + mm**2 * read**2,
+            pixels.var_M[s],
+        )
         V[i] = float(np.sum(v)) / (4 * n * n)
     return S, V
 

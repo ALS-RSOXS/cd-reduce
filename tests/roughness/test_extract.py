@@ -304,3 +304,35 @@ def test_fit_psds_low_count_poisson_unbiased():
     assert ok.sum() >= 15
     assert 0.99 <= np.median(t.S_lpr[ok] / S_P(t.f_center[ok])) <= 1.01
     assert 0.99 <= np.median(t.S_lwr[ok] / S_W(t.f_center[ok])) <= 1.01
+
+
+def test_quick_ler_variance_and_bias_low_count_modulated():
+    """Per-pixel variance matches Monte Carlo spread; S is unbiased."""
+    rng0 = np.random.default_rng(11)
+    n = 6000
+    qx = rng0.uniform(0.0, 2 * np.pi / W, n)  # one whole period
+    qx[0] = 2 * np.pi / W  # ensures one full period is selected
+    f = np.exp(rng0.uniform(np.log(0.004), np.log(0.006), n))
+    mt = 4 * np.sin(qx * W / 2) ** 2 * 3.0 + np.cos(qx * W / 2) ** 2 * 0.2
+    lam = 5.0
+    m = mt / lam
+    edges = np.array([0.003, 0.007])
+    est, var = [], []
+    for k in range(200):
+        ph = np.random.default_rng(100 + k).poisson(lam * np.ones(n)).astype(float)
+        base = make(qx, f, m * ph, m * m * np.maximum(ph, 1))
+        px = ReducedPixels(
+            **{a: getattr(base, a) for a in ("Qx", "Qy", "Qz", "f", "D", "M", "var_M")},
+            energy_ev=base.energy_ev,
+            omega_deg=base.omega_deg,
+            frame_id=base.frame_id,
+            m_per_photon=m,
+            meta={**base.meta, "read_noise_photons": 0.0},
+        )
+        S, V = quick_ler(px, W, edges)
+        est.append(S[0])
+        var.append(V[0])
+    est, var = np.array(est), np.array(var)
+    sel = qx * W <= 2 * np.pi
+    assert abs(est.mean() / (mt[sel].mean() / 2) - 1) < 0.01
+    assert abs(est.std(ddof=1) / np.sqrt(var.mean()) - 1) < 0.15
