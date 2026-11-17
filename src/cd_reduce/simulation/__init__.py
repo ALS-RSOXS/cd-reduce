@@ -12,6 +12,10 @@ from cd_reduce.simulation.multislice import (
     simulate_multislice_2d,
     simulate_multislice_3d,
 )
+from cd_reduce.simulation.rough_scattering import (
+    RoughEnsembleResult,
+    simulate_rough_ensemble,
+)
 from cd_reduce.simulation.structures import (
     GratingLayerSpec,
     RefractiveIndexMap2D,
@@ -37,6 +41,7 @@ __all__ = [
     "MultisliceSimulationResult3D",
     "RefractiveIndexMap2D",
     "RefractiveIndexMap3D",
+    "RoughEnsembleResult",
     "build_grating_2d",
     "build_grating_3d",
     "build_rough_grating_3d",
@@ -50,4 +55,5 @@ __all__ = [
     "simulate_born_3d",
     "simulate_multislice_2d",
     "simulate_multislice_3d",
+    "simulate_rough_ensemble",
 ]

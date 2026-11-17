@@ -94,6 +94,7 @@ from cd_reduce.simulation import (
     MultisliceSimulationResult3D,
     RefractiveIndexMap2D,
     RefractiveIndexMap3D,
+    RoughEnsembleResult,
     build_grating_2d,
     build_grating_3d,
     build_rough_grating_3d,
@@ -107,6 +108,7 @@ from cd_reduce.simulation import (
     simulate_born_3d,
     simulate_multislice_2d,
     simulate_multislice_3d,
+    simulate_rough_ensemble,
 )
 
 __version__ = "0.1.0"
@@ -168,6 +170,7 @@ __all__ = [
     "QMap2D",
     "RefractiveIndexMap2D",
     "RefractiveIndexMap3D",
+    "RoughEnsembleResult",
     "SpotLine",
     "Trace1D",
     "__version__",
@@ -253,6 +256,7 @@ __all__ = [
     "simulate_born_3d",
     "simulate_multislice_2d",
     "simulate_multislice_3d",
+    "simulate_rough_ensemble",
     "subtract_corner_offset",
     "subtract_offline_band_background",
     "subtract_row_col_offset",
