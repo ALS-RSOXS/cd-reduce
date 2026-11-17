@@ -21,7 +21,7 @@ SHAPE = (1024, 1024)
 ENERGIES = (280.0, 285.0, 288.0)
 OMEGAS = np.arange(-20, 21, 2.0)
 ADU_PER_PHOTON = 27.0
-SCALE = 1e12
+SCALE = 5e13
 
 PSD_LPR = partial(psd_palasantzas, sigma_nm=1.0, xi_nm=25.0, hurst=0.7)
 PSD_LWR = partial(psd_palasantzas, sigma_nm=1.5, xi_nm=12.0, hurst=0.5)
@@ -37,7 +37,7 @@ def _psd_e_lwr(f):
 
 
 _DN_A = {280.0: -1e-3 + 2e-4j, 285.0: -2e-3 + 1.5e-3j, 288.0: -1.2e-3 + 2.5e-3j}
-_R = {280.0: 0.7 + 0.05j, 285.0: 0.4 + 0.2j, 288.0: 0.9 + 0.1j}
+_R = {280.0: 0.7 + 0.05j, 285.0: 1.15 + 0.05j, 288.0: 0.9 + 0.1j}
 
 
 def latent(E: float) -> LatentFilm:

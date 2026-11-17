@@ -79,8 +79,7 @@ def test_scale_recovery(small_order_table):
 
 def test_latent_contrast_reduces_gamma0():
     xs = ref.latent(285.0)
-    # relief-only: no latent index contrast (r = 0)
     relief = LatentFilm(
-        xs.L, xs.w, xs.s, xs.h, xs.dh, xs.lam, 0j, xs.dn_A, energy_ev=285.0
+        xs.L, xs.w, xs.s, xs.h, xs.dh, xs.lam, 1.0 + 0j, xs.dn_A, energy_ev=285.0
     )
     assert abs(xs.gamma(0.0)) < abs(relief.gamma(0.0))
