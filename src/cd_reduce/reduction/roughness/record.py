@@ -95,9 +95,7 @@ class PsdRecord:
         if not lines or lines[0] != CONVENTION:
             raise ValueError("not a PSD record: missing convention line")
         meta = json.loads(lines[1][2:], object_hook=_dec)
-        df = pd.read_csv(
-            io.StringIO("\n".join(lines[2:])), float_precision="round_trip"
-        )
+        df = pd.read_csv(io.StringIO("\n".join(lines[2:])))
         arr = {n: df[n].to_numpy() for n in df.columns}
         edges = np.append(arr["f_lo"], arr["f_hi"][-1])
         kw: dict[str, Any] = {n: arr[n].astype(float) for n in _VEC if n != "n"}
