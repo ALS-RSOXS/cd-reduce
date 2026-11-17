@@ -48,6 +48,30 @@ class RoughEnsembleResult:
     diffuse_var : ndarray
         Variance of the diffuse estimate: ``var_r(|A_r - Abar|^2, ddof=1) / n``.
         NaN when ``n = 1``, on invalid modes and on the (0, 0) mode.
+    flux_factor : ndarray
+        ``cos(omega) / cos(theta_out)`` per mode, with
+        ``cos(theta_out) = k_z,out / k0 = (k0 cos(omega) + Qz) / k0`` (engine sign
+        convention: ``k_z,in = k0 cos(omega)``, ``k_z,out = k_z,in + Qz``). NaN on
+        invalid modes, exactly 1 on the (0, 0) mode.
+    diffuse_flux, diffuse_flux_var : ndarray
+        ``diffuse * flux_factor`` and ``diffuse_var * flux_factor**2``.
+
+    Notes
+    -----
+    Two intensity conventions. The amplitude ``A`` uses the tilted-path prefactor
+    ``-i k0 / cos(omega)``, the convention of `simulate_born_2d` and the multislice
+    phase screen, so ``|A|^2 = k0^2 |F|^2 / cos^2(omega)`` (``coherent``,
+    ``diffuse``, `order_efficiency`). The exact first-Born transmitted field of a
+    mode is ``-i k0 F / cos(theta_out)``; the power it carries through a
+    ``z = const`` plane, normalised to the incident power, is
+    ``|field|^2 cos(theta_out) / cos(omega) = k0^2 |F|^2 / (cos(omega)
+    cos(theta_out))`` = ``|A|^2 * flux_factor``. That flux form is what a detector
+    counts and is the HOWTO model's form (``diffuse_flux``,
+    `order_flux_efficiency`).
+
+    The engine's ``omega`` sense is opposite to `cd_reduce.reduction.geometry`: a
+    frame taken at detector-geometry angle ``W`` corresponds to engine
+    ``omega = -W``.
     """
 
     engine: str
@@ -64,6 +88,9 @@ class RoughEnsembleResult:
     coherent: np.ndarray
     diffuse: np.ndarray
     diffuse_var: np.ndarray
+    flux_factor: np.ndarray
+    diffuse_flux: np.ndarray
+    diffuse_flux_var: np.ndarray
     metadata: dict[str, Any] = field(default_factory=dict)
 
     def _order_index(self, m: int) -> tuple[int, int]:
@@ -85,6 +112,11 @@ class RoughEnsembleResult:
         """Coherent efficiency ``|<A>|^2`` of order ``m`` versus ``omega``."""
         ix, iy = self._order_index(m)
         return np.abs(self.coherent[:, ix, iy]) ** 2
+
+    def order_flux_efficiency(self, m: int) -> np.ndarray:
+        """Flux efficiency ``order_efficiency(m) * flux_factor`` of order ``m``."""
+        ix, iy = self._order_index(m)
+        return self.order_efficiency(m) * self.flux_factor[:, ix, iy]
 
 
 def _crop_indices(n: int, d: float, q_max: float) -> tuple[np.ndarray, np.ndarray]:
@@ -253,7 +285,11 @@ def simulate_rough_ensemble(
 
     i0 = np.flatnonzero(ix == 0)
     j0 = np.flatnonzero(iy == 0)
+    cos_in = np.cos(np.deg2rad(omega_arr))[:, None, None]
+    cos_out = cos_in + qz_eval / k0
+    flux_factor = np.where(valid, cos_in / np.where(valid, cos_out, 1.0), np.nan)
     if i0.size and j0.size:
+        flux_factor[:, i0[0], j0[0]] = np.where(valid[:, i0[0], j0[0]], 1.0, np.nan)
         coherent[:, i0[0], j0[0]] += 1.0
         diffuse[:, i0[0], j0[0]] = np.nan
         diffuse_var[:, i0[0], j0[0]] = np.nan
@@ -278,6 +314,9 @@ def simulate_rough_ensemble(
         coherent=coherent,
         diffuse=diffuse,
         diffuse_var=diffuse_var,
+        flux_factor=flux_factor,
+        diffuse_flux=diffuse * flux_factor,
+        diffuse_flux_var=diffuse_var * flux_factor**2,
         metadata={
             "nx": first.nx,
             "ny": first.ny,

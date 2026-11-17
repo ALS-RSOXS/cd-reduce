@@ -206,3 +206,41 @@ def test_debye_waller_from_ensemble():
             f"m={m} ratio={ratio:.5f} expect={expect:.5f} rel={ratio / expect - 1:+.4f}"
         )
         assert ratio == pytest.approx(expect, rel=0.03)
+
+
+def test_flux_factor_matches_independent_formula():
+    m3 = _random_map(np.random.default_rng(4), 32, 6, 4, 1.0, 4.0, 2.0)
+    omegas = np.array([-15.0, 0.0, 8.0, 40.0])
+    res = simulate_rough_ensemble(
+        lambda _rng: m3, omegas, n_realisations=3, qx_max=10.0, qy_max=10.0
+    )
+    k0 = m3.k0_nm_inv
+    om = np.deg2rad(omegas)[:, None, None]
+    kx = k0 * np.sin(om) + res.qx[None, :, None]
+    arg = k0**2 - kx**2 - res.qy[None, None, :] ** 2
+    good = arg > 0
+    cos_out = np.sqrt(np.where(good, arg, 1.0)) / k0
+    expected = np.where(good, np.cos(om) / cos_out, np.nan)
+    assert (~good).any()
+    np.testing.assert_allclose(res.flux_factor, expected, rtol=1e-12, equal_nan=True)
+    i0 = int(np.flatnonzero(res.qx == 0)[0])
+    j0 = int(np.flatnonzero(res.qy == 0)[0])
+    np.testing.assert_array_equal(res.flux_factor[:, i0, j0], 1.0)
+    np.testing.assert_allclose(
+        res.diffuse_flux, res.diffuse * res.flux_factor, equal_nan=True
+    )
+    np.testing.assert_allclose(
+        res.diffuse_flux_var, res.diffuse_var * res.flux_factor**2, equal_nan=True
+    )
+
+
+def test_order_flux_efficiency_y_uniform_film():
+    m2 = to_index_map_2d(_latent(), nx=160, nz=40, energy_ev=285.0)
+    m3 = m2.to_3d(ny=8, ly_nm=64.0)
+    omegas = np.array([-12.0, 0.0, 10.0])
+    res = simulate_rough_ensemble(lambda _rng: m3, omegas, n_realisations=1)
+    k0 = m3.k0_nm_inv
+    cos_om = np.cos(np.deg2rad(omegas))
+    for m in (-3, -1, 1, 2, 4):
+        expected = res.order_efficiency(m) * cos_om / (cos_om + res.order_qz(m) / k0)
+        np.testing.assert_allclose(res.order_flux_efficiency(m), expected, rtol=1e-12)
