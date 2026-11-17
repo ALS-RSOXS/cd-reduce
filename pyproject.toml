@@ -1,0 +1,131 @@
+[build-system]
+requires = ["uv_build>=0.12.6,<0.13.0"]
+build-backend = "uv_build"
+
+[project]
+name = "cd-reduce"
+version = "0.1.0"
+description = "Reducing and simulating CD-RSoXS / CD-SAXS data collected at ALS beamline 11.0.1.2"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.13"
+authors = [
+    { name = "Harlan D Heilman", email = "73567020+HarlanHeilman@users.noreply.github.com" }
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.13",
+    "Typing :: Typed",
+]
+keywords = ["rsoxs", "cdsaxs", "cd-rsoxs", "xray", "scattering", "multislice", "born"]
+dependencies = [
+    "astropy>=7.0.0",
+    "matplotlib>=3.10.0",
+    "numpy>=2.2.0",
+    "pandas>=2.2.0",
+    "scipy>=1.15.0",
+    "tqdm>=4.67.0",
+]
+
+[project.scripts]
+cd-reduce = "cd_reduce.cli:main"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3.0",
+    "pytest-cov>=6.0.0",
+    "ruff>=0.11.0",
+    "ty>=0.0.14",
+]
+docs = [
+    "mkdocs>=1.6.0",
+    "mkdocs-rsoxs>=0.1.2",
+    "mkdocstrings-python>=1.16.0",
+    "pymdown-extensions>=10.0.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/ALS-RSOXS/cd-reduce"
+Documentation = "https://als-rsoxs.github.io/cd-reduce"
+Repository = "https://github.com/ALS-RSOXS/cd-reduce"
+Issues = "https://github.com/ALS-RSOXS/cd-reduce/issues"
+
+# =============================================================================
+# Ruff
+# =============================================================================
+
+[tool.ruff]
+target-version = "py313"
+line-length = 88
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+ignore = ["ERA001"]
+select = [
+    "E",      # pycodestyle errors
+    "W",      # pycodestyle warnings
+    "F",      # Pyflakes
+    "I",      # isort
+    "B",      # flake8-bugbear
+    "C4",     # flake8-comprehensions
+    "UP",     # pyupgrade
+    "ARG",    # flake8-unused-arguments
+    "SIM",    # flake8-simplify
+    "PTH",    # flake8-use-pathlib
+    "RUF",    # Ruff-specific rules
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["cd_reduce"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = ["ARG001"]
+
+# =============================================================================
+# ty (Astral type checker)
+# =============================================================================
+
+[tool.ty.src]
+include = ["src/**/*.py", "tests/**/*.py"]
+
+# =============================================================================
+# Pytest
+# =============================================================================
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+addopts = [
+    "-ra",
+    "-q",
+    "--strict-markers",
+    "--strict-config",
+]
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+]
+
+# =============================================================================
+# Coverage
+# =============================================================================
+
+[tool.coverage.run]
+source = ["src/cd_reduce"]
+branch = true
+parallel = true
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
+    "@abstractmethod",
+]
+show_missing = true

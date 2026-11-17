@@ -1,0 +1,100 @@
+site_name: "als-rsoxs - cd-reduce"
+site_description: Transmission CD-RSoXS / CD-SAXS data reduction, reciprocal-space mapping, and 2D/3D Born & multislice scattering simulation
+site_url: https://als-rsoxs.github.io/cd-reduce/
+repo_url: https://github.com/als-rsoxs/cd-reduce
+repo_name: als-rsoxs/cd-reduce
+edit_uri: edit/main/docs/
+
+extra:
+  als_group:
+    full_name: ALS RSOXS Group Project
+    acronym: REIXS
+    github_url: https://github.com/als-rsoxs
+    reixs_url: https://als.lbl.gov/science/photon-science-programs/rixs-program/
+
+theme:
+  name: rsoxs
+  show_title: true
+  show_stargazers: true
+  topbar_sections: false
+  katex_options:
+    throwOnError: false
+  features:
+    - content.code.copy
+    - content.code.annotate
+    - navigation.instant
+    - navigation.tracking
+    - navigation.sections
+    - navigation.top
+    - search.suggest
+    - search.highlight
+    - toc.follow
+
+plugins:
+  - rsoxs
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          paths:
+            - src
+          options:
+            show_source: true
+            show_root_heading: true
+            show_root_toc_entry: true
+            show_submodules: false
+            docstring_style: google
+            merge_init_into_class: true
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.arithmatex:
+      generic: true
+  - pymdownx.superfences
+  - pymdownx.highlight:
+      anchor_linenums: true
+      css_class: codehilite
+  - pymdownx.inlinehilite
+  - pymdownx.snippets:
+      base_path:
+        - .
+        - docs
+      check_paths: true
+  - pymdownx.tabbed:
+      alternate_style: true
+  - toc:
+      permalink: true
+
+nav:
+  - Home: index.md
+  - Guides:
+      - Data reduction:
+          - Overview: guides/reduction/index.md
+          - Spot extraction and calibration: guides/reduction/calibration.md
+          - Backgrounds and corrections: guides/reduction/backgrounds.md
+      - Reciprocal-space mapping:
+          - Overview: guides/mapping/index.md
+          - 2D domains and Ewald geometry: guides/mapping/domains_2d.md
+          - Slicing, 1D traces, and LER PSD: guides/mapping/slicing_and_1d.md
+          - LER / LWR / LPR PSDs: guides/mapping/roughness_psd.md
+      - Building and simulating structures:
+          - Overview: guides/simulation/index.md
+          - 2D structures and wavefields: guides/simulation/structures_2d.md
+          - 2D Born vs. Multislice: guides/simulation/born_vs_multislice_2d.md
+          - 3D rough line gratings: guides/simulation/rough_gratings_3d.md
+      - "Case study - resist gratings": guides/case_study/index.md
+  - Theory:
+      - Overview: theory/overview.md
+      - Pipeline at a glance: theory/pipeline.md
+      - Ewald sphere and geometry: theory/geometry_and_ewald.md
+      - Born approximation and roughness PSD: theory/born_and_roughness.md
+      - Split-step Fourier multislice: theory/multislice.md
+  - API Reference:
+      - Overview: api/index.md
+      - Python:
+          - cd_reduce: api/python/cd_reduce.md
+          - cd_reduce.loader: api/python/loader.md
+          - cd_reduce.reduction: api/python/reduction.md
+          - cd_reduce.simulation: api/python/simulation.md
+  - Contributing: contributing.md
