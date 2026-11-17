@@ -8,7 +8,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from cd_reduce.reduction.roughness import (
+from cd_reduce.reduction.roughness._legacy import (
     DiffuseRatio,
     decompose_edge_psd,
     edge_psd_kernel,

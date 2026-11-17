@@ -61,6 +61,9 @@ from cd_reduce.reduction.mapping import (
     pixel_q_area,
     prepare_frame,
 )
+from cd_reduce.reduction.roughness import psd_models as _pm
+
+_TWO_PI = 2.0 * np.pi
 
 QyMode = Literal["line_cut", "qz_trace"]
 NormalizeMode = Literal["order", "first_order"]
@@ -73,9 +76,10 @@ NormalizeMode = Literal["order", "first_order"]
 def psd_mack(
     qy: ArrayLike, p0: float, xi_nm: float, hurst: float, floor: float = 0.0
 ) -> NDArray[np.float64]:
-    """Mack / Palasantzas PSD ``S = P0 / (1 + (Qy xi)^2)^(H + 1/2) + floor``."""
-    q = np.asarray(qy, dtype=np.float64)
-    return p0 / (1.0 + (q * xi_nm) ** 2) ** (hurst + 0.5) + floor
+    """Mack PSD of the wavenumber ``qy`` (delegates to :mod:`psd_models`)."""
+    return _pm.psd_mack(
+        np.asarray(qy, dtype=np.float64) / _TWO_PI, p0, xi_nm, hurst, floor
+    )
 
 
 def psd_power_law(
@@ -95,10 +99,16 @@ def psd_spectral_peak(
     peak_q: float,
     peak_width: float,
 ) -> NDArray[np.float64]:
-    """Mack PSD plus a Gaussian spectral peak at ``peak_q`` (one dominant period)."""
-    q = np.asarray(qy, dtype=np.float64)
-    gauss = peak_amplitude * np.exp(-0.5 * ((np.abs(q) - peak_q) / peak_width) ** 2)
-    return psd_mack(q, p0, xi_nm, hurst) + gauss
+    """Mack PSD plus a Gaussian peak at wavenumber ``peak_q`` (delegates)."""
+    return _pm.psd_spectral_peak(
+        np.asarray(qy, dtype=np.float64) / _TWO_PI,
+        p0,
+        xi_nm,
+        hurst,
+        peak_amplitude,
+        peak_q / _TWO_PI,
+        peak_width / _TWO_PI,
+    )
 
 
 PSD_MODELS: dict[str, tuple[Callable[..., NDArray[np.float64]], tuple[str, ...]]] = {
