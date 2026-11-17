@@ -104,9 +104,12 @@ addopts = [
     "-q",
     "--strict-markers",
     "--strict-config",
+    "-m",
+    "not validation",
 ]
 markers = [
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "validation: HOWTO regression tests (run with -m validation)",
 ]
 
 # =============================================================================
