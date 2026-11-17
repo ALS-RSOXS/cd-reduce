@@ -107,8 +107,7 @@ def test_fit_psds_order_rows_only_is_flagged():
     qx = np.concatenate([G * m + rng.uniform(-1e-3, 1e-3, 3000) for m in (1, 2)])
     # one frequency window per order so some bins hold a single order
     base = synth(qx=qx, seed=6)
-    f = np.where(np.arange(len(qx)) < 3000, np.abs(base.f), np.abs(base.f))
-    px = make(base.Qx, f, base.M, base.var_M)
+    px = base
     only1 = px.select(np.arange(len(qx)) < 3000)  # bins without the other row
     t = fit_psds(only1, W, np.geomspace(F_LO, F_HI, 6))
     assert np.all(np.isinf(t.cond) | np.isnan(t.S_lpr))
@@ -180,4 +179,94 @@ def test_sigma_window_matches_integral():
     assert e2 > 0 and s2 == sig
     S = S_P(fc).copy()
     S[3] = np.nan
-    assert np.isfinite(sigma_window(fc, S, np.zeros_like(fc))[0])
+    keep = np.arange(len(fc)) != 3
+    got = sigma_window(fc, S, np.zeros_like(fc))
+    assert got == sigma_window(fc[keep], S[keep], np.zeros(keep.sum()))
+
+
+def _bin_design(px, w, i, edges, cross=False):
+    f = np.abs(px.f)
+    s = (f >= edges[i]) & (f < edges[i + 1])
+    x = np.abs(px.Qx[s])
+    cols = [4 * np.sin(x * w / 2) ** 2, np.cos(x * w / 2) ** 2]
+    if cross:
+        cols.append(2 * np.sin(x * w))
+    return np.stack(cols, 1), px.M[s], px.var_M[s]
+
+
+def test_fit_psds_covariance_matches_bruteforce():
+    edges = np.geomspace(F_LO, F_HI, 6)
+    rng = np.random.default_rng(20)
+    px = synth(n=5000, edges=edges, snap=False, seed=21)
+    px = make(px.Qx, px.f, px.M * (1 + 0.15 * rng.standard_normal(len(px.M))), px.var_M)
+    t = fit_psds(px, W, edges)
+    i = 2
+    A, m, v = _bin_design(px, W, i, edges)
+    N = A.T @ (A / v[:, None])
+    inv = np.linalg.inv(N)
+    beta = inv @ (A.T @ (m / v))
+    chi2 = np.sum((m - A @ beta) ** 2 / v) / (len(m) - 2)
+    assert chi2 > 1
+    cov = inv * max(1.0, chi2)
+    assert t.chi2_red[i] == pytest.approx(chi2)
+    assert t.var_lpr[i] == pytest.approx(cov[0, 0])
+    assert t.var_lwr[i] == pytest.approx(cov[1, 1])
+    assert t.cov_pw[i] == pytest.approx(cov[0, 1])
+    assert t.var_ler[i] == pytest.approx(cov[0, 0] + cov[1, 1] / 16 + cov[0, 1] / 2)
+
+
+def test_fit_psds_monte_carlo_std_matches_reported():
+    edges = np.geomspace(F_LO, F_HI, 4)
+    base = synth(n=3000, edges=edges, snap=True, rel=0.05, seed=22)
+    rng = np.random.default_rng(23)
+    est, rep = [], []
+    for _ in range(200):
+        M = base.M + np.sqrt(base.var_M) * rng.standard_normal(len(base.M))
+        t = fit_psds(make(base.Qx, base.f, M, base.var_M), W, edges)
+        est.append(t.S_lpr[1])
+        rep.append(np.sqrt(t.var_lpr[1]))
+    assert np.std(est) == pytest.approx(np.mean(rep), rel=0.15)
+
+
+def test_fit_psds_max_cond_flags_ill_conditioned_bin():
+    edges = np.geomspace(F_LO, F_HI, 4)
+    px = synth(n=5000, edges=edges, seed=24)
+    ok = fit_psds(px, W, edges)
+    assert np.all(np.isfinite(ok.S_lpr)) and np.all(np.isfinite(ok.cond))
+    cmin = float(np.min(ok.cond))
+    bad = fit_psds(px, W, edges, max_cond=cmin / 2)
+    assert np.all(np.isnan(bad.S_lpr)) and np.all(np.isnan(bad.var_lpr))
+    assert np.all(np.isinf(bad.cond))
+
+
+def test_cross_term_recovered():
+    edges = np.geomspace(F_LO, F_HI, 6)
+    rng = np.random.default_rng(25)
+    n = 20000
+    qx = rng.uniform(0.02, 0.37, n)
+    f = np.exp(rng.uniform(np.log(F_LO), np.log(F_HI), n))
+    i = np.clip(np.searchsorted(edges, f) - 1, 0, 4)
+    fc = np.sqrt(edges[i] * edges[i + 1])
+
+    def S_X(g):
+        return 0.1 * S_P(g)
+
+    def build(sx):
+        M = (
+            4 * np.sin(qx * W / 2) ** 2 * S_P(fc)
+            + np.cos(qx * W / 2) ** 2 * S_W(fc)
+            + 2 * np.sin(qx * W) * sx(fc)
+        )
+        return make(qx, f, M, (1e-6 * np.abs(M) + 1e-9) ** 2)
+
+    t = fit_psds(build(S_X), W, edges, cross_term=True)
+    c = np.sqrt(edges[:-1] * edges[1:])
+    assert np.allclose(t.S_lpr / S_P(c), 1, atol=1e-3)
+    assert np.allclose(t.S_lwr / S_W(c), 1, atol=1e-3)
+    assert np.allclose(t.S_cross / S_X(c), 1, atol=1e-3)
+    z = build(lambda g: 0 * g)
+    t3 = fit_psds(z, W, edges, cross_term=True)
+    t2 = fit_psds(z, W, edges)
+    assert np.allclose(t3.S_lpr, t2.S_lpr, rtol=1e-3)
+    assert np.allclose(t3.S_lwr, t2.S_lwr, rtol=1e-3)
+    assert np.allclose(t3.S_cross, 0, atol=1e-3 * S_P(c).min())

@@ -169,7 +169,9 @@ def purity_bands(
             if bad.size and bad[0] > 0
             else (d[-1] if not bad.size else 0.0)
         )
-        half = min(half, q0 if q0 - half < 0 else half)
+        half = min(half, q0)
+        if half <= 0:
+            continue
         lo, hi = q0 - half, q0 + half
         hi = min(hi, qx_max)
         out["lpr" if k % 2 else "lwr"].append((k, float(lo), float(hi)))
@@ -178,7 +180,10 @@ def purity_bands(
 
 
 def _wmean_bins(vals: Arr, var: Arr, idx: NDArray, nb: int, min_pixels: int = 1):
-    """Weighted mean (weights 1/var), variance inflated by max(1, chi2_red), per bin."""
+    """Weighted mean (weights 1/var), variance inflated by max(1, chi2_red), per bin.
+
+    Note: 1/var weighting biases bin means when var scales as M^2.
+    """
     S, V = np.full(nb, np.nan), np.full(nb, np.nan)
     n = np.zeros(nb, dtype=np.int64)
     for i in range(nb):
@@ -217,7 +222,7 @@ def isolation_row_psds(
             sel = idx >= 0
             g = np.where(sel & (g > 0), g, 1.0)
             S, V, n = _wmean_bins(pixels.M / g, pixels.var_M / g**2, idx, nb)
-            out[mode][k] = {"S": S, "var": V, "n": n.astype(float)}
+            out[mode][k] = {"S": S, "var": V, "n": n}
     return out
 
 
