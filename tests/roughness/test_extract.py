@@ -184,13 +184,11 @@ def test_sigma_window_matches_integral():
     assert got == sigma_window(fc[keep], S[keep], np.zeros(keep.sum()))
 
 
-def _bin_design(px, w, i, edges, cross=False):
+def _bin_design(px, w, i, edges):
     f = np.abs(px.f)
     s = (f >= edges[i]) & (f < edges[i + 1])
     x = np.abs(px.Qx[s])
     cols = [4 * np.sin(x * w / 2) ** 2, np.cos(x * w / 2) ** 2]
-    if cross:
-        cols.append(2 * np.sin(x * w))
     return np.stack(cols, 1), px.M[s], px.var_M[s]
 
 
@@ -270,3 +268,10 @@ def test_cross_term_recovered():
     assert np.allclose(t3.S_lpr, t2.S_lpr, rtol=1e-3)
     assert np.allclose(t3.S_lwr, t2.S_lwr, rtol=1e-3)
     assert np.allclose(t3.S_cross, 0, atol=1e-3 * S_P(c).min())
+
+
+def test_purity_bands_drops_zero_width_band():
+    # S_LPR prior vanishes, so odd-k (LPR) bands have zero purity everywhere
+    bands = purity_bands(W, lambda f: 0 * f, S_W, (F_LO, F_HI), 0.9, 0.37)
+    assert bands["lpr"] == []
+    assert [k for k, *_ in bands["lwr"]] == [2, 4]

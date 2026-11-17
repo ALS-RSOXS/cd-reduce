@@ -149,8 +149,7 @@ def purity_bands(
     sp = np.asarray(prior_lpr(f), dtype=float)
     sw = np.asarray(prior_lwr(f), dtype=float)
     out: dict[str, list[tuple[int, float, float]]] = {"lpr": [], "lwr": []}
-    k = 1
-    while k * np.pi / w <= qx_max:
+    for k in range(1, int(qx_max * w / np.pi) + 1):
         q0 = k * np.pi / w
         d = np.linspace(0.0, np.pi / (2 * w), 4001)
         a = 4 * np.sin((q0 + d) * w / 2) ** 2
@@ -175,7 +174,6 @@ def purity_bands(
         lo, hi = q0 - half, q0 + half
         hi = min(hi, qx_max)
         out["lpr" if k % 2 else "lwr"].append((k, float(lo), float(hi)))
-        k += 1
     return out
 
 
