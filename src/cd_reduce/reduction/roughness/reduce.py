@@ -40,12 +40,16 @@ class ReducedPixels:
     energy_ev: NDArray[np.float64]
     omega_deg: NDArray[np.float64]
     frame_id: NDArray[np.int64]
+    m_per_photon: NDArray[np.float64] | None = None
     meta: dict[str, Any] = field(default_factory=dict)
 
     def select(self, mask: NDArray[np.bool_]) -> ReducedPixels:
         """Return the pixels where ``mask`` is true (``meta`` is kept)."""
         m = np.asarray(mask, dtype=bool)
-        return replace(self, **{n: getattr(self, n)[m] for n in _ARRAYS})
+        kw = {n: getattr(self, n)[m] for n in _ARRAYS}
+        if self.m_per_photon is not None:
+            kw["m_per_photon"] = self.m_per_photon[m]
+        return replace(self, **kw)
 
     @classmethod
     def concat(cls, items: Sequence[ReducedPixels]) -> ReducedPixels:
@@ -57,6 +61,11 @@ class ReducedPixels:
             raise ValueError("cannot concat ReducedPixels with different R_B")
         if any(it.meta.get("w") != items[0].meta.get("w") for it in items):
             raise ValueError("cannot concat ReducedPixels with different w")
+        rn = items[0].meta.get("read_noise_photons", 0.0)
+        if any(it.meta.get("read_noise_photons", 0.0) != rn for it in items):
+            raise ValueError(
+                "cannot concat ReducedPixels with different read_noise_photons"
+            )
         ids, offset = [], 0
         for it in items:
             fid = np.asarray(it.frame_id, dtype=np.int64)
@@ -67,6 +76,15 @@ class ReducedPixels:
                 ids.append(fid)
         kw = {n: np.concatenate([getattr(it, n) for it in items]) for n in _ARRAYS}
         kw["frame_id"] = np.concatenate(ids)
+        if any(it.m_per_photon is not None for it in items):
+            kw["m_per_photon"] = np.concatenate(
+                [
+                    it.m_per_photon
+                    if it.m_per_photon is not None
+                    else np.full(it.M.shape, np.nan)
+                    for it in items
+                ]
+            )
         return cls(**kw, meta=dict(items[0].meta))
 
 
@@ -142,6 +160,7 @@ def reduce_frame(
     with np.errstate(divide="ignore", invalid="ignore"):
         D = inten / norm
         var_D = var_inten / norm**2
+        m_ph = 1.0 / (t * scale * norm * contrast)
         M = D / contrast
         var_M = var_D / contrast**2
 
@@ -178,7 +197,9 @@ def reduce_frame(
         energy_ev=np.full(n, float(E)),
         omega_deg=np.full(n, float(om)),
         frame_id=np.full(n, frame_id, dtype=np.int64),
+        m_per_photon=m_ph[valid],
         meta={
+            "read_noise_photons": read_noise_photons,
             "R_B": R_B,
             "w": xs.w,
             "scale": scale,

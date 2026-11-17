@@ -55,6 +55,42 @@ def _resolve_edges(pixels: ReducedPixels, f_edges: Arr | None) -> Arr:
     return default_f_edges(pixels.meta["R_B"], f_max)
 
 
+_VAR_FLOOR = 0.01  # minimum expected photons used in model-based variance
+_IRLS_ITERS = 10
+_IRLS_TOL = 1e-6
+
+
+def _model_info(pixels: ReducedPixels):
+    """Per-pixel ``m_per_photon`` (NaN where unavailable) and read noise."""
+    mp = pixels.m_per_photon
+    if mp is None:
+        m = np.full(pixels.M.shape, np.nan)
+    else:
+        m = np.asarray(mp, dtype=float)
+        m = np.where(np.isfinite(m) & (m > 0), m, np.nan)
+    return m, float(pixels.meta.get("read_noise_photons", 0.0))
+
+
+def _model_var(mhat: Arr, m: Arr, read: float, v_obs: Arr) -> Arr:
+    """``m^2 (max(Mhat/m, floor) + read^2)`` where ``m`` is known, else ``v_obs``."""
+    with np.errstate(all="ignore"):
+        mv = m**2 * (np.maximum(mhat / m, _VAR_FLOOR) + read**2)
+    return np.where(np.isfinite(m), mv, v_obs)
+
+
+def _usable(pixels: ReducedPixels, m: Arr) -> NDArray[np.bool_]:
+    return (
+        np.isfinite(pixels.M)
+        & np.isfinite(pixels.var_M)
+        & ((pixels.var_M > 0) | np.isfinite(m))
+    )
+
+
+def _initial_var(pixels: ReducedPixels, m: Arr, read: float) -> Arr:
+    floor = m**2 * (1.0 + read**2)
+    return np.where((pixels.var_M <= 0) & np.isfinite(m), floor, pixels.var_M)
+
+
 def fit_psds(
     pixels: ReducedPixels,
     w: float,
@@ -71,7 +107,9 @@ def fit_psds(
     edges = _resolve_edges(pixels, f_edges)
     nb = len(edges) - 1
     qx = np.abs(pixels.Qx)
-    ok = np.isfinite(pixels.M) & np.isfinite(pixels.var_M) & (pixels.var_M > 0)
+    m_pp, read = _model_info(pixels)
+    ok = _usable(pixels, m_pp)
+    v_obs_all = _initial_var(pixels, m_pp, read)
     idx = _bin_index(np.abs(pixels.f), edges)
     idx[~ok] = -1
     p = 3 if cross_term else 2
@@ -89,20 +127,39 @@ def fit_psds(
         n_arr[i] = n
         if n < min_pixels:
             continue
-        x, m, v = qx[sel], pixels.M[sel], pixels.var_M[sel]
+        x, m, v = qx[sel], pixels.M[sel], v_obs_all[sel]
+        mp = m_pp[sel]
         cols = [4 * np.sin(x * w / 2) ** 2, np.cos(x * w / 2) ** 2]
         if cross_term:
             cols.append(2 * np.sin(x * w))
         A = np.stack(cols, axis=1)
+        v_fix = v
+        beta = None
+        for _ in range(_IRLS_ITERS + 1):
+            wt = 1.0 / v
+            N = A.T @ (A * wt[:, None])
+            with np.errstate(all="ignore"):
+                c = np.linalg.cond(N)
+            if not np.isfinite(c) or c > max_cond:
+                beta = None
+                break
+            inv = np.linalg.inv(N)
+            new = inv @ (A.T @ (wt * m))
+            done = (
+                beta is not None
+                and np.max(np.abs(new - beta) / np.maximum(np.abs(beta), 1e-300))
+                < _IRLS_TOL
+            )
+            beta = new
+            if done or not np.isfinite(mp).any():
+                break
+            v = _model_var(A @ beta, mp, read, v_fix)
+        if beta is None:
+            continue
         wt = 1.0 / v
         N = A.T @ (A * wt[:, None])
-        with np.errstate(all="ignore"):
-            c = np.linalg.cond(N)
-        if not np.isfinite(c) or c > max_cond:
-            continue
-        cond[i] = c
         inv = np.linalg.inv(N)
-        beta = inv @ (A.T @ (wt * m))
+        cond[i] = c
         r = m - A @ beta
         dof = n - p
         c2 = float(np.sum(wt * r * r) / dof) if dof > 0 else np.nan
@@ -177,10 +234,21 @@ def purity_bands(
     return out
 
 
-def _wmean_bins(vals: Arr, var: Arr, idx: NDArray, nb: int, min_pixels: int = 1):
-    """Weighted mean (weights 1/var), variance inflated by max(1, chi2_red), per bin.
+def _wmean_bins(
+    vals: Arr,
+    var: Arr,
+    idx: NDArray,
+    nb: int,
+    min_pixels: int = 1,
+    m: Arr | None = None,
+    g: Arr | None = None,
+    read: float = 0.0,
+):
+    """Weighted mean per bin, variance inflated by max(1, chi2_red).
 
-    Note: 1/var weighting biases bin means when var scales as M^2.
+    With ``m`` (M per photon) and ``g`` (row weight, ``vals = M / g``) the
+    variance is model based and iterated: ``var_i = (m_i/g_i)^2 (max(g_i mu /
+    m_i, floor) + read^2)`` (IRLS); otherwise the observed ``var`` is used.
     """
     S, V = np.full(nb, np.nan), np.full(nb, np.nan)
     n = np.zeros(nb, dtype=np.int64)
@@ -189,10 +257,21 @@ def _wmean_bins(vals: Arr, var: Arr, idx: NDArray, nb: int, min_pixels: int = 1)
         n[i] = int(s.sum())
         if n[i] < min_pixels:
             continue
-        wt = 1.0 / var[s]
+        x, v0 = vals[s], var[s]
+        mu = None
+        v = v0
+        for _ in range(_IRLS_ITERS + 1):
+            wt = 1.0 / v
+            new = float(np.sum(wt * x) / wt.sum())
+            done = mu is not None and abs(new - mu) <= _IRLS_TOL * max(abs(mu), 1e-300)
+            mu = new
+            if m is None or done or not np.isfinite(m[s]).any():
+                break
+            ms, gs = m[s], g[s]
+            v = _model_var(gs * mu, ms, read, v0 * gs**2) / gs**2
+        wt = 1.0 / v
         sw = wt.sum()
-        mu = float(np.sum(wt * vals[s]) / sw)
-        chi2 = float(np.sum(wt * (vals[s] - mu) ** 2) / (n[i] - 1)) if n[i] > 1 else 1.0
+        chi2 = float(np.sum(wt * (x - mu) ** 2) / (n[i] - 1)) if n[i] > 1 else 1.0
         S[i], V[i] = mu, max(1.0, chi2) / sw
     return S, V, n
 
@@ -208,7 +287,9 @@ def isolation_row_psds(
     nb = len(edges) - 1
     qx = np.abs(pixels.Qx)
     base = _bin_index(np.abs(pixels.f), edges)
-    base[~(np.isfinite(pixels.M) & np.isfinite(pixels.var_M) & (pixels.var_M > 0))] = -1
+    m_pp, read = _model_info(pixels)
+    base[~_usable(pixels, m_pp)] = -1
+    var_in = _initial_var(pixels, m_pp, read)
     out: dict[str, dict[int, dict[str, Arr]]] = {"lpr": {}, "lwr": {}}
     for mode, items in bands.items():
         for k, lo, hi in items:
@@ -219,7 +300,9 @@ def isolation_row_psds(
                 g = np.cos(qx * w / 2) ** 2
             sel = idx >= 0
             g = np.where(sel & (g > 0), g, 1.0)
-            S, V, n = _wmean_bins(pixels.M / g, pixels.var_M / g**2, idx, nb)
+            S, V, n = _wmean_bins(
+                pixels.M / g, var_in / g**2, idx, nb, m=m_pp, g=g, read=read
+            )
             out[mode][k] = {"S": S, "var": V, "n": n}
     return out
 
@@ -239,6 +322,7 @@ def quick_ler(pixels: ReducedPixels, w: float, f_edges: Arr) -> tuple[Arr, Arr]:
     K = int(np.floor(qx.max() * w / (2 * np.pi)))
     if K < 1:
         return S, V
+    m_pp, read = _model_info(pixels)
     idx = _bin_index(np.abs(pixels.f), edges)
     idx[(qx * w > 2 * np.pi * K) | ~np.isfinite(pixels.M)] = -1
     for i in range(nb):
@@ -246,8 +330,10 @@ def quick_ler(pixels: ReducedPixels, w: float, f_edges: Arr) -> tuple[Arr, Arr]:
         n = int(s.sum())
         if n == 0:
             continue
-        S[i] = float(pixels.M[s].mean()) / 2
-        V[i] = float(np.sum(pixels.var_M[s])) / (4 * n * n)
+        mbar = float(pixels.M[s].mean())
+        S[i] = mbar / 2
+        v = _model_var(np.full(n, mbar), m_pp[s], read, pixels.var_M[s])
+        V[i] = float(np.sum(v)) / (4 * n * n)
     return S, V
 
 

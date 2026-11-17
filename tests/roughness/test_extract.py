@@ -275,3 +275,32 @@ def test_purity_bands_drops_zero_width_band():
     bands = purity_bands(W, lambda f: 0 * f, S_W, (F_LO, F_HI), 0.9, 0.37)
     assert bands["lpr"] == []
     assert [k for k, *_ in bands["lwr"]] == [2, 4]
+
+
+def test_fit_psds_low_count_poisson_unbiased():
+    """Model-based IRLS variance removes the low-photon observed-variance bias."""
+    rng = np.random.default_rng(7)
+    edges = default_f_edges(2 * np.pi * F_LO, F_HI)
+    n = 400000
+    qx = rng.uniform(0.02, 0.37, n)
+    f = np.exp(rng.uniform(np.log(F_LO), np.log(F_HI), n))
+    i = np.clip(np.searchsorted(edges, f) - 1, 0, len(edges) - 2)
+    fe = np.sqrt(edges[i] * edges[i + 1])
+    mt = 4 * np.sin(qx * W / 2) ** 2 * S_P(fe) + np.cos(qx * W / 2) ** 2 * S_W(fe)
+    lam = rng.uniform(3.0, 7.0, n)
+    m = mt / lam
+    ph = rng.poisson(lam).astype(float)
+    px = make(qx, f, m * ph, m * m * ph)
+    px = ReducedPixels(
+        **{k: getattr(px, k) for k in ("Qx", "Qy", "Qz", "f", "D", "M", "var_M")},
+        energy_ev=px.energy_ev,
+        omega_deg=px.omega_deg,
+        frame_id=px.frame_id,
+        m_per_photon=m,
+        meta={**px.meta, "read_noise_photons": 0.0},
+    )
+    t = fit_psds(px, W, edges)
+    ok = np.isfinite(t.S_lpr) & np.isfinite(t.S_lwr)
+    assert ok.sum() >= 15
+    assert 0.99 <= np.median(t.S_lpr[ok] / S_P(t.f_center[ok])) <= 1.01
+    assert 0.99 <= np.median(t.S_lwr[ok] / S_W(t.f_center[ok])) <= 1.01
