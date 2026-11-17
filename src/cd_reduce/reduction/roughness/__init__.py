@@ -35,12 +35,19 @@ from cd_reduce.reduction.roughness.psd_models import (
     psd_spectral_peak,
     sigma_from_psd,
 )
+from cd_reduce.reduction.roughness.record import PsdRecord
 from cd_reduce.reduction.roughness.reduce import (
     ReducedPixels,
     absorption_factor,
     cos_theta_out,
     howto_prefactor,
     reduce_frame,
+)
+from cd_reduce.reduction.roughness.scale import (
+    OrderScaleFit,
+    debye_waller_sigma,
+    order_efficiency,
+    order_scale,
 )
 
 __all__ = [
@@ -50,12 +57,15 @@ __all__ = [
     "DiffuseRatio",
     "EdgePsdResult",
     "LatentFilm",
+    "OrderScaleFit",
     "PsdFit",
+    "PsdRecord",
     "PsdTable",
     "ReducedPixels",
     "absorption_factor",
     "combine_diffuse_ratios",
     "cos_theta_out",
+    "debye_waller_sigma",
     "decompose_edge_psd",
     "default_f_edges",
     "edge_psd_kernel",
@@ -66,6 +76,8 @@ __all__ = [
     "form_factor_sq",
     "howto_prefactor",
     "isolation_row_psds",
+    "order_efficiency",
+    "order_scale",
     "psd_mack",
     "psd_palasantzas",
     "psd_power_law",
