@@ -5,6 +5,8 @@ from __future__ import annotations
 import matplotlib
 import numpy as np
 
+from cd_reduce.reduction.roughness.psd_models import psd_palasantzas
+
 matplotlib.use("Agg")
 
 from cd_reduce import (
@@ -14,7 +16,7 @@ from cd_reduce import (
     RefractiveIndexMap3D,
     build_grating_2d,
     build_grating_3d,
-    generate_rough_edge_1d,
+    generate_edge_field,
     plot_born_vs_multislice_grid,
     plot_multislice_wavefield,
     plot_simulation_comparison,
@@ -80,21 +82,17 @@ def test_refractive_index_maps_and_builders() -> None:
     assert g2d.nz == 70
     assert np.isclose(g2d.lz_nm, 70.0)
 
-    # 3. 1D rough edge and 3D rough grating builder
-    dx_y, qy, psd = generate_rough_edge_1d(
-        ny=64, ly_nm=640.0, sigma_nm=2.0, correlation_length_nm=30.0, rng=7
+    # 3. 1D edge field and 3D rough grating builder
+    dx_y = generate_edge_field(
+        lambda f: psd_palasantzas(f, 2.0, 30.0, 0.5), 64, 640.0, 7
     )
     assert dx_y.shape == (64,)
-    assert qy.shape == (64,)
-    assert psd.shape == (64,)
-    assert np.isclose(np.std(dx_y), 2.0, rtol=1e-2)
 
     g3d = build_grating_3d(
         pitch_nm=100.0,
         cd_nm=45.0,
         thickness_nm=60.0,
-        ler_sigma_nm=1.8,
-        roughness_correlation=0.0,
+        psd_lpr=lambda f: psd_palasantzas(f, 1.8, 30.0, 0.5),
         nx=64,
         ny=32,
         nz=20,
@@ -184,8 +182,8 @@ def test_born_3d_and_multislice_3d_rough_grating() -> None:
         thickness_nm=50.0,
         delta_line=2.0e-3,
         beta_line=3.0e-4,
-        ler_sigma_nm=2.0,
-        correlation_length_y_nm=25.0,
+        psd_lpr=lambda f: psd_palasantzas(f, 2.0, 25.0, 0.5),
+        psd_lwr=lambda f: psd_palasantzas(f, 1.0, 25.0, 0.5),
         nx=64,
         ny=32,
         nz=20,

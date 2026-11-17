@@ -18,7 +18,8 @@ from cd_reduce.simulation.structures import (
     RefractiveIndexMap3D,
     build_grating_2d,
     build_grating_3d,
-    generate_rough_edge_1d,
+    build_rough_grating_3d,
+    generate_edge_field,
 )
 from cd_reduce.simulation.visualization import (
     plot_born_vs_multislice_grid,
@@ -38,7 +39,8 @@ __all__ = [
     "RefractiveIndexMap3D",
     "build_grating_2d",
     "build_grating_3d",
-    "generate_rough_edge_1d",
+    "build_rough_grating_3d",
+    "generate_edge_field",
     "plot_born_vs_multislice_grid",
     "plot_multislice_wavefield",
     "plot_simulation_comparison",

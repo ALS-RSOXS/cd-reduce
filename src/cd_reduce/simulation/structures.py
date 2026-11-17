@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
 from cd_reduce.utils.units import energy_to_wavelength_nm, wavelength_nm_to_k
+
+if TYPE_CHECKING:
+    from cd_reduce.reduction.roughness.cross_section import CrossSection
 
 
 @dataclass
@@ -643,60 +647,27 @@ def build_grating_2d(
     )
 
 
-def generate_rough_edge_1d(
+def generate_edge_field(
+    psd: Callable[[np.ndarray], np.ndarray] | None,
     ny: int,
     ly_nm: float,
-    sigma_nm: float,
-    correlation_length_nm: float = 30.0,
-    hurst_exponent: float = 0.5,
     rng: np.random.Generator | int | None = None,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Generate a 1D zero-mean periodic rough edge profile `dx(y)` from a Palasantzas
-    PSD.
+) -> np.ndarray:
+    """Draw a zero-mean periodic edge field `x(y)` with a two-sided PSD.
 
-    The one-dimensional power spectral density is:
-    `PSD(q_y) = C / (1 + (q_y * xi)^2)^(0.5 + H)`
-    normalized so that `Var[dx(y)] = sigma_nm^2`.
-
-    Returns
-    -------
-    dx_nm : np.ndarray
-        Real-space edge displacement profile in nm, shape `(ny,)`.
-    qy_nm_inv : np.ndarray
-        Angular wavenumber grid `q_y` in nm^-1, shape `(ny,)`.
-    psd_nm3 : np.ndarray
-        Target 1D power spectral density `PSD(q_y)` in nm^3, shape `(ny,)`.
+    `psd(f)` is a two-sided PSD in nm^3 of `f` in nm^-1 (called with `|f|`). The
+    field is not rescaled: the ensemble variance, not each realisation's, matches the
+    PSD. Returns zeros of shape `(ny,)` when `psd is None`.
     """
+    ny = int(ny)
+    if psd is None:
+        return np.zeros(ny, dtype=np.float64)
     gen = rng if isinstance(rng, np.random.Generator) else np.random.default_rng(rng)
-
-    dy_nm = float(ly_nm) / int(ny)
-    qy = 2.0 * np.pi * np.fft.fftfreq(int(ny), d=dy_nm)
-    if sigma_nm <= 0.0 or int(ny) < 2:
-        return (
-            np.zeros(int(ny), dtype=np.float64),
-            qy,
-            np.zeros(int(ny), dtype=np.float64),
-        )
-
-    xi = max(float(correlation_length_nm), 1e-6)
-    h = float(hurst_exponent)
-    shape_unnorm = 1.0 / np.power(1.0 + (qy * xi) ** 2, 0.5 + h)
-    shape_unnorm[0] = 0.0  # zero mean
-    dq = 2.0 * np.pi / float(ly_nm)
-    integral = float(np.sum(shape_unnorm) * dq / (2.0 * np.pi))
-    psd = shape_unnorm * (float(sigma_nm) ** 2 / max(integral, 1e-30))
-
-    # Construct Hermitian-symmetric Fourier coefficients with random phase
-    phases = gen.uniform(0.0, 2.0 * np.pi, size=int(ny))
-    amps = np.sqrt(psd * float(ly_nm)) * np.exp(1j * phases)
-    amps[0] = 0.0
-    dx_raw = np.fft.ifft(amps).real * (int(ny) / float(ly_nm))
-    std_raw = float(np.std(dx_raw))
-    if std_raw > 0.0:
-        dx_nm = dx_raw * (float(sigma_nm) / std_raw)
-    else:
-        dx_nm = np.zeros(int(ny), dtype=np.float64)
-    return dx_nm, qy, psd
+    f_k = np.fft.fftfreq(ny, d=ly_nm / ny)
+    amp = np.sqrt(np.asarray(psd(np.abs(f_k)), dtype=np.float64) * ly_nm / ny)
+    amp[0] = 0.0
+    white = gen.standard_normal(ny)
+    return np.fft.ifft(np.fft.fft(white) * amp).real * ny / ly_nm
 
 
 def build_grating_3d(
@@ -710,10 +681,8 @@ def build_grating_3d(
     beta_line: float = 4.0e-4,
     delta_space: float = 0.0,
     beta_space: float = 0.0,
-    ler_sigma_nm: float = 1.5,
-    correlation_length_y_nm: float = 30.0,
-    hurst_exponent: float = 0.5,
-    roughness_correlation: float = 0.0,
+    psd_lpr: Callable[[np.ndarray], np.ndarray] | None = None,
+    psd_lwr: Callable[[np.ndarray], np.ndarray] | None = None,
     n_periods: int = 1,
     nx: int = 128,
     ny: int = 64,
@@ -729,18 +698,10 @@ def build_grating_3d(
     ----------
     pitch_nm, cd_nm, thickness_nm : float
         Nominal grating pitch, bottom critical dimension, and thickness in nm.
-    ler_sigma_nm : float
-        1-sigma line-edge roughness amplitude in nm on each sidewall.
-    correlation_length_y_nm : float
-        Along-line (`y`) roughness correlation length in nm.
-    hurst_exponent : float
-        Roughness Hurst exponent `H` (0.5 gives exponential covariance).
-    roughness_correlation : float
-        Cross-correlation coefficient `c in [-1, 1]` between the left and right
-        sidewall displacements of each line:
-        - `c = +1.0`: pure line-placement roughness (LPR / pitch walking / wiggle)
-        - `c =  0.0`: uncorrelated left/right line-edge roughness (standard LER)
-        - `c = -1.0`: pure line-width roughness (LWR / symmetric width breathing)
+    psd_lpr, psd_lwr : callable or None
+        Two-sided PSDs `S(f)` (nm^3, `f` in nm^-1) of the line-placement `P` and
+        line-width `W` fields, drawn independently per line. Edges are
+        `u_L = P - W/2` and `u_R = P + W/2`. `None` means no roughness of that kind.
     n_periods : int
         Number of grating periods included along `x`.
     """
@@ -767,32 +728,21 @@ def build_grating_3d(
     widths_z = layer.width_at_z(z_nm)  # (nz,)
 
     rng = np.random.default_rng(seed)
-    corr = float(np.clip(roughness_correlation, -1.0, 1.0))
 
     frac_total = np.zeros((nx, ny, nz), dtype=np.float64)
     left_edges_all = []
     right_edges_all = []
+    p_all = []
+    w_all = []
 
     for period_idx in range(n_per):
         x_center = (period_idx - 0.5 * (n_per - 1)) * float(pitch_nm)
-        u1, qy, psd_1d = generate_rough_edge_1d(
-            ny=ny,
-            ly_nm=ly_nm,
-            sigma_nm=ler_sigma_nm,
-            correlation_length_nm=correlation_length_y_nm,
-            hurst_exponent=hurst_exponent,
-            rng=rng,
-        )
-        u2, _, _ = generate_rough_edge_1d(
-            ny=ny,
-            ly_nm=ly_nm,
-            sigma_nm=ler_sigma_nm,
-            correlation_length_nm=correlation_length_y_nm,
-            hurst_exponent=hurst_exponent,
-            rng=rng,
-        )
-        dx_left = u1
-        dx_right = corr * u1 + np.sqrt(max(0.0, 1.0 - corr * corr)) * u2
+        p_field = generate_edge_field(psd_lpr, ny, ly_nm, rng)
+        w_field = generate_edge_field(psd_lwr, ny, ly_nm, rng)
+        dx_left = p_field - 0.5 * w_field
+        dx_right = p_field + 0.5 * w_field
+        p_all.append(p_field)
+        w_all.append(w_field)
         left_edges_all.append(dx_left)
         right_edges_all.append(dx_right)
 
@@ -837,15 +787,91 @@ def build_grating_3d(
             "cd_nm": float(cd_nm),
             "thickness_nm": float(thickness_nm),
             "sidewall_angle_deg": float(sidewall_angle_deg),
-            "ler_sigma_nm": float(ler_sigma_nm),
-            "correlation_length_y_nm": float(correlation_length_y_nm),
-            "hurst_exponent": float(hurst_exponent),
-            "roughness_correlation": corr,
             "n_periods": n_per,
+            "P_nm": np.asarray(p_all),
+            "W_nm": np.asarray(w_all),
             "left_edge_dx_nm": np.asarray(left_edges_all),
             "right_edge_dx_nm": np.asarray(right_edges_all),
-            "qy_nm_inv": qy,
-            "input_psd_nm3": psd_1d,
+        },
+    )
+
+
+def build_rough_grating_3d(
+    xs: CrossSection,
+    *,
+    n_lines: int,
+    ly_nm: float,
+    dx_nm: float,
+    dy_nm: float,
+    dz_nm: float,
+    psd_lpr: Callable[[np.ndarray], np.ndarray] | None = None,
+    psd_lwr: Callable[[np.ndarray], np.ndarray] | None = None,
+    rng: np.random.Generator | int | None = None,
+) -> RefractiveIndexMap3D:
+    """Build a rough 3D grating from a 2D cross-section model.
+
+    Line `j` is centred at `x = j * L` and owns the cell `[jL - L/2, jL + L/2)`; x
+    cell centres are `(i + 0.5) * L/nx_per - L/2` (identical to `to_index_map_2d`).
+    Each line gets independent placement `P_j(y)` and width `W_j(y)` fields, with
+    edges `u_L = P - W/2`, `u_R = P + W/2`. Cell `delta_n` is
+    `xs.delta_n_line(x - jL, u_L[y], u_R[y], z)`, mapped to `delta = -Re`,
+    `beta = Im` with a vacuum reference. z spans `[0, xs.height)`.
+
+    Raises
+    ------
+    ValueError
+        If any `|u_L|` or `|u_R|` exceeds `(L - w) / 2` (neighbouring cells overlap).
+    """
+    gen = rng if isinstance(rng, np.random.Generator) else np.random.default_rng(rng)
+    L = float(xs.L)
+    nx_per = max(round(L / dx_nm), 1)
+    ny = max(round(ly_nm / dy_nm), 1)
+    nz = max(round(float(xs.height) / dz_nm), 1)
+    x_cell = (np.arange(nx_per) + 0.5) * (L / nx_per) - L / 2
+    z = (np.arange(nz) + 0.5) * (float(xs.height) / nz)
+    limit = (L - float(xs.w)) / 2
+
+    p_all, w_all = [], []
+    for _ in range(int(n_lines)):
+        p_all.append(generate_edge_field(psd_lpr, ny, ly_nm, gen))
+        w_all.append(generate_edge_field(psd_lwr, ny, ly_nm, gen))
+    p_arr = np.asarray(p_all)
+    w_arr = np.asarray(w_all)
+    u_left = p_arr - 0.5 * w_arr
+    u_right = p_arr + 0.5 * w_arr
+    if max(np.abs(u_left).max(), np.abs(u_right).max()) > limit:
+        raise ValueError(
+            "edge displacement exceeds (L - w)/2 = "
+            f"{limit:g} nm; neighbouring lines overlap"
+        )
+
+    blocks = []
+    for j in range(int(n_lines)):
+        dn = xs.delta_n_line(
+            x_cell[:, None, None],
+            u_left[j][None, :, None],
+            u_right[j][None, :, None],
+            z[None, None, :],
+        )
+        blocks.append(dn)
+    dn_all = np.concatenate(blocks, axis=0)
+    x_nm = np.concatenate([x_cell + j * L for j in range(int(n_lines))])
+    y_nm = (np.arange(ny) + 0.5) * (float(ly_nm) / ny)
+    return RefractiveIndexMap3D(
+        x_nm=x_nm,
+        y_nm=y_nm,
+        z_nm=z,
+        delta=-dn_all.real,
+        beta=dn_all.imag,
+        energy_ev=float(xs.energy_ev),
+        pitch_nm=L,
+        delta_ref=0.0,
+        beta_ref=0.0,
+        metadata={
+            "P_nm": p_arr,
+            "W_nm": w_arr,
+            "cross_section": xs,
+            "n_lines": int(n_lines),
         },
     )
 
@@ -856,5 +882,6 @@ __all__ = [
     "RefractiveIndexMap3D",
     "build_grating_2d",
     "build_grating_3d",
-    "generate_rough_edge_1d",
+    "build_rough_grating_3d",
+    "generate_edge_field",
 ]
