@@ -95,7 +95,9 @@ class PsdRecord:
         if not lines or lines[0] != CONVENTION:
             raise ValueError("not a PSD record: missing convention line")
         meta = json.loads(lines[1][2:], object_hook=_dec)
-        df = pd.read_csv(io.StringIO("\n".join(lines[2:])))
+        df = pd.read_csv(
+            io.StringIO("\n".join(lines[2:])), float_precision="round_trip"
+        )
         arr = {n: df[n].to_numpy() for n in df.columns}
         edges = np.append(arr["f_lo"], arr["f_hi"][-1])
         kw: dict[str, Any] = {n: arr[n].astype(float) for n in _VEC if n != "n"}
@@ -116,8 +118,9 @@ class PsdRecord:
         """Rescale S and var by the contrast ratio ``|dn_A|^2 |Gamma|^2`` old/new.
 
         ``Gamma`` is the unit-contrast form factor, so ``|dn_A|^2`` is included
-        in the ratio (doubling ``|dn_A|`` divides S by 4). var is multiplied by
-        the same ratio, as specified.
+        in the ratio (doubling ``|dn_A|`` divides S by 4). S is multiplied by
+        the ratio, var and ``cov_pw`` by ratio**2, and ``sigma_win`` (value and
+        error) by sqrt(ratio).
 
         Note: exact rescaling needs the per-pixel Qz distribution. Here the
         ratio is evaluated at ``source["qz_mean"]`` (0.0 if absent), an
@@ -134,12 +137,13 @@ class PsdRecord:
             / (abs(new_xs.dn_A) ** 2 * new_xs.gamma2(qz))
         )
         t = self.table
-        upd = {
-            n: getattr(t, n) * ratio
-            for n in ("S_lpr", "S_lwr", "S_ler", "var_lpr", "var_lwr", "var_ler",
-                      "S_cross", "var_cross")
-            if getattr(t, n) is not None
-        }  # fmt: skip
+        upd = {}
+        for n in ("S_lpr", "S_lwr", "S_ler", "S_cross"):
+            if getattr(t, n) is not None:
+                upd[n] = getattr(t, n) * ratio
+        for n in ("var_lpr", "var_lwr", "var_ler", "var_cross", "cov_pw"):
+            if getattr(t, n) is not None:
+                upd[n] = getattr(t, n) * ratio**2
         sw = {
             k: (v[0] * np.sqrt(ratio), v[1] * np.sqrt(ratio))
             for k, v in self.sigma_win.items()

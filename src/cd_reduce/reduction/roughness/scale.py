@@ -17,6 +17,15 @@ _HC_EV_NM = 1239.84198
 _DEFAULT_ORDERS = (-4, -3, -2, -1, 1, 2, 3, 4)
 
 
+def _debye_waller(m, L: float, sigma):
+    """``exp(-m^2 G^2 sigma^2)`` with ``G = 2 pi / L``."""
+    return np.exp(
+        -(np.asarray(m, dtype=float) ** 2)
+        * (2 * np.pi / L) ** 2
+        * np.asarray(sigma) ** 2
+    )
+
+
 def order_efficiency(
     xs: CrossSection,
     m: int,
@@ -35,13 +44,12 @@ def order_efficiency(
     ``cos theta_out = cos W + Qz/k`` and ``T_m = window_T**(1/cos W)``.
     """
     k = 2 * np.pi * energy_ev / _HC_EV_NM
-    G = 2 * np.pi / xs.L
     W = np.deg2rad(np.asarray(omega_deg, dtype=float) + omega0_deg)
     qz = np.asarray(Qz, dtype=float)
     cos_w = np.cos(W)
     cos_out = cos_w + qz / k
     fm2 = np.abs(xs.f_m(m, qz)) ** 2
-    dw = np.exp(-(m**2) * G**2 * sigma_ler**2)
+    dw = _debye_waller(m, xs.L, sigma_ler)
     a = absorption_factor(xs.mu_h, W, cos_out)
     t_m = window_T ** (1.0 / cos_w)
     with np.errstate(divide="ignore", invalid="ignore"):
@@ -119,16 +127,18 @@ def order_scale(
     ok = np.isfinite(base) & (base > 0)
     if ok.sum() < len(energies) + 1:
         raise ValueError("too few usable rows for the order fit")
-    G2m2 = np.array([(2 * np.pi / x.L) ** 2 for x in xs_row]) * ms.astype(float) ** 2
+    lens = np.array([x.L for x in xs_row])
     ne = len(energies)
 
     def resid(p: NDArray[np.float64]) -> NDArray[np.float64]:
-        model = p[eidx] + np.log(base) - G2m2 * p[ne] ** 2
+        model = p[eidx] + np.log(base * _debye_waller(ms, lens, p[ne]))
         return ((log_i - model) / rel)[ok]
 
     c0 = np.array(
         [
-            np.median((log_i - np.log(base) + G2m2 * 1.0)[ok & (eidx == i)])
+            np.median(
+                (log_i - np.log(base * _debye_waller(ms, lens, 1.0)))[ok & (eidx == i)]
+            )
             for i in range(ne)
         ]
     )

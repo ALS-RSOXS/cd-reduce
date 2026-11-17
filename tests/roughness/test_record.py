@@ -66,4 +66,7 @@ def test_record_rescale_by_gamma_ratio():
     r = _rec()
     q = r.rescale(new)
     assert np.allclose(q.table.S_lpr, r.table.S_lpr / 4, equal_nan=True)
-    assert np.allclose(q.table.var_lpr, r.table.var_lpr / 4, equal_nan=True)
+    assert np.allclose(q.table.var_lpr, r.table.var_lpr / 16, equal_nan=True)
+    assert np.allclose(q.table.var_ler, r.table.var_ler / 16)
+    assert np.allclose(q.table.cov_pw, r.table.cov_pw / 16)
+    assert np.allclose(q.sigma_win["ler"], np.array(r.sigma_win["ler"]) / 2)
