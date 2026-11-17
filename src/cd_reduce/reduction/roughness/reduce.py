@@ -55,6 +55,8 @@ class ReducedPixels:
         rb = items[0].meta.get("R_B")
         if any(it.meta.get("R_B") != rb for it in items):
             raise ValueError("cannot concat ReducedPixels with different R_B")
+        if any(it.meta.get("w") != items[0].meta.get("w") for it in items):
+            raise ValueError("cannot concat ReducedPixels with different w")
         ids, offset = [], 0
         for it in items:
             fid = np.asarray(it.frame_id, dtype=np.int64)
@@ -106,6 +108,8 @@ def reduce_frame(
     ``keep`` threshold is ``|Gamma(Qz)|^2 exp(-Qx^2 s^2)``, relative to its
     maximum over the otherwise valid pixels of this frame.
     """
+    if beamstop_mask is not None and np.shape(beamstop_mask) != frame.image.shape:
+        raise ValueError("beamstop_mask shape must match the frame image shape")
     cleaned, qm, _, gf = prepare_frame(
         frame,
         geometry,
@@ -147,7 +151,7 @@ def reduce_frame(
         & np.isfinite(contrast) & (contrast > 0) & np.isfinite(M) & np.isfinite(var_M)
         & (cos_out > 0)
     )  # fmt: skip
-    if beamstop_mask is not None and np.shape(beamstop_mask) == photons.shape:
+    if beamstop_mask is not None:
         valid &= ~np.asarray(beamstop_mask, dtype=bool)
 
     G = 2 * np.pi / xs.L
