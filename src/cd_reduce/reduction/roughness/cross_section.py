@@ -39,6 +39,8 @@ class CrossSection(Protocol):
     energy_ev: float
     top_facing: Literal["upstream", "downstream"]
 
+    @property
+    def height(self) -> float: ...
     def gamma(self, Qz: ArrayLike) -> CArr: ...
     def gamma2(self, Qz: ArrayLike) -> FArr: ...
     def g(self, x: ArrayLike, Qz: ArrayLike) -> CArr: ...
@@ -198,7 +200,7 @@ def to_index_map_2d(
     """
     from cd_reduce.simulation.structures import RefractiveIndexMap2D
 
-    height = float(xs.h if hasattr(xs, "h") else xs.h_d)  # type: ignore[attr-defined]
+    height = float(xs.height)
     x = (np.arange(nx) + 0.5) * (xs.L / nx) - xs.L / 2
     z = (np.arange(nz) + 0.5) * (height / nz)
     dn = xs.delta_n_line(x[:, None], 0.0, 0.0, z[None, :])

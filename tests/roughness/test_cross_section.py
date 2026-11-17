@@ -3,7 +3,6 @@ from dataclasses import replace
 import numpy as np
 import pytest
 from scipy.integrate import quad
-from scipy.stats import norm
 
 from cd_reduce.reduction.roughness.cross_section import (
     CrossSection,
@@ -57,7 +56,6 @@ def test_exposed_fraction_inside_line_is_zero():
     assert lat.delta_n_line(0.0, 0, 0, 20.0) == pytest.approx(lat.dn_A, abs=1e-12)
     want = lat.dn_A * (1 + (lat.r - 1) * np.exp(-(40 - 20) / 25))
     assert lat.delta_n_line(40.0, 0, 0, 20.0) == pytest.approx(want, rel=1e-6)
-    assert norm.cdf(0.0) == 0.5  # sanity of convention below
     assert dev.delta_n_line(0.0, 0, 0, 10.0) == pytest.approx(dev.dn_A, abs=1e-12)
     assert dev.delta_n_line(40.0, 0, 0, 10.0) == pytest.approx(0, abs=1e-12)
     assert dev.delta_n_line(0.0, 0, 0, 30.0) == 0
@@ -104,3 +102,18 @@ def test_to_index_map_2d_shape_and_values():
     assert m.x_nm.size == 160
     val = -m.delta + 1j * m.beta
     assert val[80, 20] == pytest.approx(lat.dn_A, rel=1e-3)
+
+
+@pytest.mark.parametrize("q", [-0.3, -0.05, 0.05, 0.3])
+def test_latent_gamma_equals_line_minus_space_column(q):
+    assert lat.gamma(q) == pytest.approx(lat.g(0.0, q) - lat.g(lat.L / 2, q), rel=1e-6)
+
+
+@pytest.mark.parametrize("obj", [lat, dev])
+def test_mu_h_matches_numeric_mean_and_scales_with_energy(obj):
+    x = (np.arange(20000) + 0.5) / 20000 * obj.L - obj.L / 2
+    f0 = np.mean(obj.g(x, 0.0))
+    k = 2 * np.pi * obj.energy_ev / 1239.841984
+    assert obj.mu_h == pytest.approx(2 * k * np.imag(obj.dn_A * f0), rel=1e-4)
+    doubled = replace(obj, energy_ev=2 * obj.energy_ev)
+    assert doubled.mu_h == pytest.approx(2 * obj.mu_h, rel=1e-12)
