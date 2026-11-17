@@ -336,3 +336,52 @@ def test_quick_ler_variance_and_bias_low_count_modulated():
     sel = qx * W <= 2 * np.pi
     assert abs(est.mean() / (mt[sel].mean() / 2) - 1) < 0.01
     assert abs(est.std(ddof=1) / np.sqrt(var.mean()) - 1) < 0.15
+
+
+def _corrupt_beyond(px, q_cut=0.2, factor=0.5):
+    bad = np.abs(px.Qx) > q_cut
+    M = np.where(bad, px.M * factor, px.M)
+    return make(px.Qx, px.f, M, np.where(bad, px.var_M * factor**2, px.var_M))
+
+
+def test_fit_psds_qx_max_cut_rejects_corrupted_high_qx():
+    edges = np.geomspace(F_LO, F_HI, 101)
+    px = _corrupt_beyond(synth(edges=edges, rel=1e-6))
+    fc = np.sqrt(edges[:-1] * edges[1:])
+    t = fit_psds(px, W, edges, qx_max=0.2)
+    assert np.all(np.isfinite(t.S_lpr))
+    assert np.allclose(t.S_lpr / S_P(fc), 1, atol=1e-3)
+    assert np.allclose(t.S_lwr / S_W(fc), 1, atol=1e-3)
+    t0 = fit_psds(px, W, edges)
+    bad = max(
+        np.max(np.abs(t0.S_lpr / S_P(fc) - 1)), np.max(np.abs(t0.S_lwr / S_W(fc) - 1))
+    )
+    assert bad > 1e-2
+
+
+def test_isolation_rows_and_quick_ler_qx_max_cut():
+    bands = purity_bands(45, S_P, S_W, (F_LO, F_HI), 0.9, 0.37)
+    edges = np.geomspace(F_LO, F_HI, 11)
+    fc = np.sqrt(edges[:-1] * edges[1:])
+    rng = np.random.default_rng(9)
+    centres = [k * np.pi / W for k in range(1, 6)]
+    qx = np.concatenate([c + rng.uniform(-2e-4, 2e-4, 4000) for c in centres])
+    px = _corrupt_beyond(synth(qx=qx, edges=edges, rel=1e-6, seed=10))
+    cut = isolation_row_psds(px, W, bands, edges, qx_max=0.2)
+    full = isolation_row_psds(px, W, bands, edges)
+    truth = {"lpr": S_P(fc), "lwr": S_W(fc)}
+    for mode in ("lpr", "lwr"):
+        for k, d in cut[mode].items():
+            if k * np.pi / W > 0.2:
+                assert np.all(np.isnan(d["S"])) and np.all(d["n"] == 0)
+                assert np.allclose(full[mode][k]["S"] / truth[mode], 0.5, atol=1e-3)
+            else:
+                assert np.allclose(d["S"] / truth[mode], 1, atol=1e-3)
+
+    qx = np.random.default_rng(12).uniform(0.0, 0.37, 400000)
+    px = _corrupt_beyond(synth(qx=qx, edges=edges, rel=0.01, seed=11))
+    want = S_P(fc) + S_W(fc) / 4
+    S, _ = quick_ler(px, W, edges, qx_max=0.2)
+    assert np.allclose(S, want, rtol=0.02)
+    S0, _ = quick_ler(px, W, edges)
+    assert not np.allclose(S0, want, rtol=0.05)

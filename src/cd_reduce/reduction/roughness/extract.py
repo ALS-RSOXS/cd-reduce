@@ -99,10 +99,15 @@ def fit_psds(
     cross_term: bool = False,
     min_pixels: int = 10,
     max_cond: float = 1e8,
+    qx_max: float | None = None,
 ) -> PsdTable:
     """Weighted two-mode (optionally three-unknown) least squares per |f| bin.
 
     Covariance is inv(N) * max(1, chi2_red); estimates are never clipped.
+
+    ``qx_max`` (nm^-1), if given, keeps only pixels with ``|Qx| <= qx_max``. The
+    first-order edge model behind ``M`` is valid for ``|Qx| sigma_LER <~ 0.3``
+    (HOWTO pitfalls); the reduction leaves the choice of cut to the caller.
     """
     edges = _resolve_edges(pixels, f_edges)
     nb = len(edges) - 1
@@ -112,6 +117,8 @@ def fit_psds(
     v_obs_all = _initial_var(pixels, m_pp, read)
     idx = _bin_index(np.abs(pixels.f), edges)
     idx[~ok] = -1
+    if qx_max is not None:
+        idx[qx > qx_max] = -1
     p = 3 if cross_term else 2
 
     def nan():
@@ -282,14 +289,23 @@ def isolation_row_psds(
     w: float,
     bands: dict[str, list[tuple[int, float, float]]],
     f_edges: Arr,
+    *,
+    qx_max: float | None = None,
 ) -> dict[str, dict[int, dict[str, Arr]]]:
-    """Single-mode PSD per band k: S_LPR=M/(4 sin^2) (odd k), S_LWR=M/cos^2 (even k)."""
+    """Single-mode PSD per band k: S_LPR=M/(4 sin^2) (odd k), S_LWR=M/cos^2 (even k).
+
+    ``qx_max`` (nm^-1), if given, keeps only pixels with ``|Qx| <= qx_max``. The
+    first-order edge model behind ``M`` is valid for ``|Qx| sigma_LER <~ 0.3``
+    (HOWTO pitfalls); the reduction leaves the choice of cut to the caller.
+    """
     edges = np.asarray(f_edges, dtype=float)
     nb = len(edges) - 1
     qx = np.abs(pixels.Qx)
     base = _bin_index(np.abs(pixels.f), edges)
     m_pp, read = _model_info(pixels)
     base[~_usable(pixels, m_pp)] = -1
+    if qx_max is not None:
+        base[qx > qx_max] = -1
     var_in = _initial_var(pixels, m_pp, read)
     out: dict[str, dict[int, dict[str, Arr]]] = {"lpr": {}, "lwr": {}}
     for mode, items in bands.items():
@@ -308,11 +324,22 @@ def isolation_row_psds(
     return out
 
 
-def quick_ler(pixels: ReducedPixels, w: float, f_edges: Arr) -> tuple[Arr, Arr]:
+def quick_ler(
+    pixels: ReducedPixels,
+    w: float,
+    f_edges: Arr,
+    *,
+    qx_max: float | None = None,
+) -> tuple[Arr, Arr]:
     """S_LER ~ mean(M)/2 over whole Qx periods (|Qx| w in [0, 2 pi K]).
 
     Unweighted mean: weights 1/var_M correlate with M itself and would bias a
     phase-average. Variance propagates var_M assuming independent pixels.
+
+    ``qx_max`` (nm^-1), if given, keeps only pixels with ``|Qx| <= qx_max``. The
+    first-order edge model behind ``M`` is valid for ``|Qx| sigma_LER <~ 0.3``
+    (HOWTO pitfalls); the reduction leaves the choice of cut to the caller. The
+    whole-period window is then restricted to ``2 pi K / w <= qx_max``.
     """
     edges = np.asarray(f_edges, dtype=float)
     nb = len(edges) - 1
@@ -320,7 +347,8 @@ def quick_ler(pixels: ReducedPixels, w: float, f_edges: Arr) -> tuple[Arr, Arr]:
     if pixels.Qx.size == 0:
         return S, V
     qx = np.abs(pixels.Qx)
-    K = int(np.floor(qx.max() * w / (2 * np.pi)))
+    q_top = float(qx.max()) if qx_max is None else min(float(qx.max()), qx_max)
+    K = int(np.floor(q_top * w / (2 * np.pi)))
     if K < 1:
         return S, V
     m_pp, read = _model_info(pixels)
