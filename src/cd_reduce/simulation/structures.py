@@ -810,6 +810,9 @@ def build_rough_grating_3d(
 ) -> RefractiveIndexMap3D:
     """Build a rough 3D grating from a 2D cross-section model.
 
+    `dx_nm`, `dy_nm` and `dz_nm` are rounded to integer cell counts per period, over
+    `ly_nm` and over `xs.height` (the actual spacings are `L/nx`, `ly/ny`, `h/nz`).
+
     Line `j` is centred at `x = j * L` and owns the cell `[jL - L/2, jL + L/2)`; x
     cell centres are `(i + 0.5) * L/nx_per - L/2` (identical to `to_index_map_2d`).
     Each line gets independent placement `P_j(y)` and width `W_j(y)` fields, with

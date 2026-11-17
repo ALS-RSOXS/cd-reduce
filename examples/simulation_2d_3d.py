@@ -4,7 +4,7 @@ Covers:
 1. Constructing arbitrary 2D (`RefractiveIndexMap2D`) and 3D (`RefractiveIndexMap3D`)
    optical constant maps n = 1 - delta + i*beta, as well as parameterized line-space
    gratings with trapezoidal sidewalls, top corner rounding, multi-layer stacks,
-   and 3D correlated/uncorrelated line-edge/line-width roughness (LER / LWR / LPR).
+   and independent line-placement / line-width roughness (LPR / LWR) set by two-sided PSDs.
 2. Comparing 2D Born approximation (`simulate_born_2d`) vs. 2D Multislice / Split-Step
    Fourier beam propagation (`simulate_multislice_2d`) in weak-scattering (kinematic)
    and strong-scattering (dynamical + absorption asymmetry) regimes.
@@ -17,6 +17,8 @@ Covers:
 
 from __future__ import annotations
 
+from functools import partial
+
 import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
@@ -24,6 +26,7 @@ import numpy as np
 matplotlib.use("Agg")
 
 import cd_reduce as cdr
+from cd_reduce.reduction.roughness.psd_models import psd_palasantzas
 
 
 def main() -> None:
@@ -120,7 +123,7 @@ def main() -> None:
     )
     print(f"Custom core-shell 2D map simulated: orders={ms_custom.orders.tolist()}")
 
-    # 4. 3D Line Grating with Palasantzas Line-Edge Roughness (LER)
+    # 4. 3D Line Grating with Palasantzas LPR and LWR PSDs
     struct_3d = cdr.build_grating_3d(
         pitch_nm=100.0,
         cd_nm=45.0,
@@ -128,6 +131,8 @@ def main() -> None:
         sidewall_angle_deg=88.0,
         delta_line=2.5e-3,
         beta_line=4.0e-4,
+        psd_lpr=partial(psd_palasantzas, sigma_nm=2.0, xi_nm=25.0, hurst=0.7),
+        psd_lwr=partial(psd_palasantzas, sigma_nm=1.8, xi_nm=30.0, hurst=0.75),
         nx=64,
         ny=32,
         nz=20,

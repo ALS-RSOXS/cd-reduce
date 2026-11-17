@@ -103,3 +103,22 @@ def test_build_rough_grating_3d_rejects_overlap():
             psd_lpr=lambda f: psd_palasantzas(f, 30.0, 25.0, 0.7),
             rng=0,
         )
+
+
+def test_build_rough_grating_3d_with_psds():
+    small = lambda f: psd_palasantzas(f, 0.5, 25.0, 0.7)  # noqa: E731
+    g = build_rough_grating_3d(
+        lat,
+        n_lines=3,
+        ly_nm=256,
+        dx_nm=1.0,
+        dy_nm=4.0,
+        dz_nm=1.0,
+        psd_lpr=small,
+        psd_lwr=small,
+        rng=3,
+    )
+    assert g.metadata["P_nm"].shape == (3, 64)
+    assert g.metadata["W_nm"].shape == (3, 64)
+    assert g.delta.shape == (300, 64, 40)
+    assert np.ptp(g.delta[:, :, 5], axis=1).max() > 0  # varies along y

@@ -22,12 +22,14 @@ from __future__ import annotations
 
 import json
 import tempfile
+from functools import partial
 from pathlib import Path
 
 import numpy as np
 from astropy.io import fits
 
 import cd_reduce as cdr
+from cd_reduce.reduction.roughness.psd_models import psd_palasantzas
 
 
 def write_synthetic_fits_series(
@@ -80,6 +82,8 @@ def main() -> None:
         sidewall_angle_deg=87.0,
         delta_line=2.5e-3,
         beta_line=4.0e-4,
+        psd_lpr=partial(psd_palasantzas, sigma_nm=2.0, xi_nm=25.0, hurst=0.7),
+        psd_lwr=partial(psd_palasantzas, sigma_nm=1.8, xi_nm=30.0, hurst=0.75),
         nx=64,
         ny=32,
         nz=24,
