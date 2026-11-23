@@ -104,7 +104,7 @@ def _matched_frames(ensembles, case: str, seed: int = 0):
     )  # fmt: skip
 
 
-def _pooled_frames(ensembles, case: str, matched: bool = True):
+def _pooled_frames(ensembles, case: str, matched: bool = True, engine: str = "born"):
     """Noiseless ensemble and model frames per omega, summed over the K seeds."""
 
     def total(frames):
@@ -115,7 +115,10 @@ def _pooled_frames(ensembles, case: str, matched: bool = True):
             exposure_s=f0.exposure_s,
         )  # fmt: skip
 
-    ens = [ensembles.frames(case, poisson=False, seed=s) for s in ensembles.seeds(True)]
+    ens = [
+        ensembles.frames(case, poisson=False, seed=s, engine=engine)
+        for s in ensembles.seeds(True)
+    ]
     model = _matched_frames if matched else _model_frames
     mod = [model(ensembles, case, s) for s in ensembles.seeds(True)]
     return (
@@ -125,7 +128,11 @@ def _pooled_frames(ensembles, case: str, matched: bool = True):
 
 
 def ratio_medians(
-    ensembles, case: str, matched: bool = True, min_blocks: int = 10
+    ensembles,
+    case: str,
+    matched: bool = True,
+    min_blocks: int = 10,
+    engine: str = "born",
 ) -> list[tuple[float, float]]:
     """``(omega, median ensemble/model block ratio)`` per omega, inside the cut.
 
@@ -137,7 +144,8 @@ def ratio_medians(
     cfg = ensembles.cfg
     xs = ref.CASES[case]["xs"](285.0)
     meds = []
-    for fe, fm in zip(*_pooled_frames(ensembles, case, matched), strict=True):
+    pooled = _pooled_frames(ensembles, case, matched, engine)
+    for fe, fm in zip(*pooled, strict=True):
         r = ensemble_vs_model_ratio(
             fe, fm, cfg["geometry"], pitch_nm=xs.L, block_px=BLOCK_PX,
             qx_max=ensembles.qx_max(case, pooled=True), null_level=NULL_LEVEL,
@@ -149,18 +157,20 @@ def ratio_medians(
     return meds
 
 
-def _check_ratio(ensembles, case: str):
-    meds = ratio_medians(ensembles, case)
+def _check_ratio(ensembles, case: str, engine: str = "born"):
+    meds = ratio_medians(ensembles, case, engine=engine)
     bad = [(om, m) for om, m in meds if not 0.95 <= m <= 1.05]
-    assert not bad, f"{case} ensemble/model median ratio per omega: {meds}"
+    assert not bad, f"{case} {engine} ensemble/model median ratio per omega: {meds}"
 
 
-def _global_fit(ensembles, case: str, seed: int | None = 0, f_edges=None):
+def _global_fit(
+    ensembles, case: str, seed: int | None = 0, f_edges=None, engine: str = "born"
+):
     """Global fit of one seed ensemble, or of all seeds pooled (``seed=None``)."""
     pix = (
-        ensembles.reduced_pooled(case)
+        ensembles.reduced_pooled(case, engine)
         if seed is None
-        else ensembles.reduced(case, seed)
+        else ensembles.reduced(case, seed, engine)
     )
     w = ref.CASES[case]["xs"](285.0).w
     qx_max = ensembles.qx_max(case, pooled=seed is None)
@@ -191,9 +201,9 @@ def _realised_binned(ensembles, case: str, f_edges, seed: int | None = 0):
     return res
 
 
-def sigma_window_ratios(ensembles, case: str) -> dict[str, float]:
+def sigma_window_ratios(ensembles, case: str, engine: str = "born") -> dict[str, float]:
     """sigma_win / realised truth per mode (and ler), inside the cut, pooled (R22)."""
-    _, _, tab = _global_fit(ensembles, case, seed=None)
+    _, _, tab = _global_fit(ensembles, case, seed=None, engine=engine)
     truth = _realised_binned(ensembles, case, tab.f_edges, seed=None)
     names = (*_modes(case), "ler")
     res = {}
@@ -208,10 +218,10 @@ def sigma_window_ratios(ensembles, case: str) -> dict[str, float]:
     return res
 
 
-def _check_sigma_window(ensembles, case: str):
-    res = sigma_window_ratios(ensembles, case)
+def _check_sigma_window(ensembles, case: str, engine: str = "born"):
+    res = sigma_window_ratios(ensembles, case, engine)
     bad = {k: v for k, v in res.items() if not abs(v - 1) < 0.05}
-    assert not bad, f"{case} sigma_win / realised truth: {res}"
+    assert not bad, f"{case} {engine} sigma_win / realised truth: {res}"
 
 
 @pytest.mark.parametrize("case", MODEL_CASES)

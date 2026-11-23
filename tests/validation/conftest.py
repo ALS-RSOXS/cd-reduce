@@ -57,10 +57,13 @@ def small_order_table(small_frames):
 
 
 class _EnsembleCache:
-    """Lazily built Born ensembles, edge fields, frames and pixels (session cache).
+    """Lazily built ensembles, edge fields, frames and pixels (session cache).
 
     ``seed`` indexes independent ensembles of ``small()`` size; seed 0 is the
     primary ensemble, seeds 0..K-1 give the scatter for the chi^2 criteria (R20).
+    ``engine`` selects Born or multislice; both engines see the same realisations
+    for a given seed, so the edge fields are shared. Multislice ensembles carry
+    the epsilon Born reference (``metadata["born_eps"]``).
     """
 
     def __init__(self, n_real: int | None = None, k_seeds: int = 8):
@@ -70,8 +73,8 @@ class _EnsembleCache:
         self.k_seeds = int(k_seeds)
         self._res, self._edges, self._frames, self._red = {}, {}, {}, {}
 
-    def result(self, case: str, seed: int = 0):
-        key = (case, seed)
+    def result(self, case: str, seed: int = 0, engine: str = "born"):
+        key = (case, seed, engine)
         if key not in self._res:
             cfg, c = self.cfg, ref.CASES[case]
             xs = c["xs"](285.0)
@@ -88,19 +91,27 @@ class _EnsembleCache:
 
             # The engine's omega sense is opposite to the detector's W (R21):
             # simulate at -W so the rendered frames sit at +W.
+            ms = engine == "multislice"
             self._res[key] = simulate_rough_ensemble(
-                make, -np.asarray(cfg["ensemble_omegas"]),
+                make, -np.asarray(cfg["ensemble_omegas"]), engine=engine,
                 n_realisations=cfg["ensemble_n_real"], seed=2000 + 101 * seed,
+                born_reference="epsilon" if ms else None,
             )  # fmt: skip
             assert len(edges) == cfg["ensemble_n_real"], (
                 f"{len(edges)} edge sets collected, expected {cfg['ensemble_n_real']}"
             )
-            self._edges[key] = edges
+            prev = self._edges.setdefault((case, seed), edges)
+            assert all(
+                np.array_equal(a, b)
+                for pw, qw in zip(prev, edges, strict=True)
+                for a, b in zip(pw, qw, strict=True)
+            ), "engines must see identical realisations"
         return self._res[key]
 
     def edges(self, case: str, seed: int = 0):
         """``[(P, W), ...]`` per realisation, each of shape (n_lines, ny)."""
-        self.result(case, seed)
+        if (case, seed) not in self._edges:
+            self.result(case, seed)
         return self._edges[(case, seed)]
 
     def seeds(self, pooled: bool) -> range:
@@ -147,10 +158,13 @@ class _EnsembleCache:
         keep = f[o] != 0
         return f[o][keep], sp[o][keep], sw[o][keep]
 
-    def frames(self, case: str, poisson: bool = True, seed: int = 0):
-        key = (case, poisson, seed)
+    def frames(
+        self, case: str, poisson: bool = True, seed: int = 0, engine: str = "born"
+    ):
+        key = (case, poisson, seed, engine)
         if key not in self._frames:
-            res, xs = self.result(case, seed), ref.CASES[case]["xs"](285.0)
+            res = self.result(case, seed, engine)
+            xs = ref.CASES[case]["xs"](285.0)
             self._frames[key] = [
                 render_ensemble_frame(
                     res, i, xs, self.cfg["geometry"], scale=ref.SCALE,
@@ -162,8 +176,8 @@ class _EnsembleCache:
             ]  # fmt: skip
         return self._frames[key]
 
-    def reduced(self, case: str, seed: int = 0) -> ReducedPixels:
-        key = (case, seed)
+    def reduced(self, case: str, seed: int = 0, engine: str = "born") -> ReducedPixels:
+        key = (case, seed, engine)
         if key not in self._red:
             xs = ref.CASES[case]["xs"](285.0)
             items = [
@@ -171,14 +185,16 @@ class _EnsembleCache:
                     fr, self.cfg["geometry"], xs, scale=ref.SCALE,
                     adu_per_photon=ref.ADU_PER_PHOTON, frame_id=i,
                 )
-                for i, fr in enumerate(self.frames(case, seed=seed))
+                for i, fr in enumerate(self.frames(case, seed=seed, engine=engine))
             ]  # fmt: skip
             self._red[key] = ReducedPixels.concat(items)
         return self._red[key]
 
-    def reduced_pooled(self, case: str) -> ReducedPixels:
+    def reduced_pooled(self, case: str, engine: str = "born") -> ReducedPixels:
         """Reduced pixels of all ``k_seeds`` ensembles (R22)."""
-        return ReducedPixels.concat([self.reduced(case, s) for s in self.seeds(True)])
+        return ReducedPixels.concat(
+            [self.reduced(case, s, engine) for s in self.seeds(True)]
+        )
 
 
 @pytest.fixture(scope="session")

@@ -427,6 +427,31 @@ def _propagate_multislice_3d_single_omega(
     return psi, delta_kz
 
 
+def _multislice_3d_mode_grid(
+    structure: RefractiveIndexMap3D,
+    omega_deg: float,
+    qx_2d: np.ndarray,
+    qy_2d: np.ndarray,
+    mode: ApproximationMode = "correct",
+) -> tuple[np.ndarray, np.ndarray]:
+    """Exit-wave mode amplitudes ``c(qx, qy)`` on the full FFT grid at one tilt.
+
+    ``c = fft2(psi_exit) / (nx ny) * exp(-i(qx x0 + qy y0)) * exp(-i dkz lz / 2)``
+    (the (0, 0) mode carries the transmitted beam). Returns ``(c, delta_kz)``.
+    """
+    psi_exit, delta_kz = _propagate_multislice_3d_single_omega(
+        structure, float(omega_deg), qx_2d=qx_2d, qy_2d=qy_2d, mode=mode
+    )
+    x0 = float(structure.x_nm[0])
+    y0 = float(structure.y_nm[0])
+    c = (
+        (np.fft.fft2(psi_exit) / float(structure.nx * structure.ny))
+        * np.exp(-1j * (qx_2d * x0 + qy_2d * y0))
+        * np.exp(-1j * delta_kz * (0.5 * structure.lz_nm))
+    )
+    return c, delta_kz
+
+
 def simulate_multislice_3d(
     structure: RefractiveIndexMap3D,
     *,
@@ -479,13 +504,8 @@ def simulate_multislice_3d(
     phase_origin = np.exp(-1j * (qx_2d * x0 + qy_2d * y0))
 
     for i_om, om in enumerate(omega_arr):
-        psi_exit, delta_kz = _propagate_multislice_3d_single_omega(
+        c_fft2, delta_kz = _multislice_3d_mode_grid(
             structure, float(om), qx_2d=qx_2d, qy_2d=qy_2d, mode=mode
-        )
-        c_fft2 = (
-            (np.fft.fft2(psi_exit) / float(nx * ny))
-            * phase_origin
-            * np.exp(-1j * delta_kz * (0.5 * lz))
         )
         for m_val in orders:
             m = int(m_val)

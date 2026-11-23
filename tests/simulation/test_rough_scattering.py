@@ -9,7 +9,11 @@ import pytest
 
 from cd_reduce.reduction.roughness.cross_section import LatentFilm, to_index_map_2d
 from cd_reduce.reduction.roughness.psd_models import psd_palasantzas
-from cd_reduce.simulation import simulate_born_2d, simulate_rough_ensemble
+from cd_reduce.simulation import (
+    simulate_born_2d,
+    simulate_multislice_2d,
+    simulate_rough_ensemble,
+)
 from cd_reduce.simulation.structures import (
     RefractiveIndexMap3D,
     build_rough_grating_3d,
@@ -119,8 +123,6 @@ def test_unknown_engine_raises():
     m3 = _random_map(np.random.default_rng(3), 8, 4, 2, 1.0, 1.0, 1.0)
     with pytest.raises(ValueError, match="engine"):
         simulate_rough_ensemble(lambda _rng: m3, [0.0], engine="fdtd")
-    with pytest.raises(NotImplementedError):
-        simulate_rough_ensemble(lambda _rng: m3, [0.0], engine="multislice")
 
 
 def test_diffuse_estimators_against_stored_realisations():
@@ -244,3 +246,68 @@ def test_order_flux_efficiency_y_uniform_film():
     for m in (-3, -1, 1, 2, 4):
         expected = res.order_efficiency(m) * cos_om / (cos_om + res.order_qz(m) / k0)
         np.testing.assert_allclose(res.order_flux_efficiency(m), expected, rtol=1e-12)
+
+
+def test_multislice_y_uniform_matches_multislice_2d():
+    m2 = to_index_map_2d(_latent(), nx=160, nz=40, energy_ev=285.0)
+    m3 = m2.to_3d(ny=8, ly_nm=64.0)
+    for om in (0.0, 10.0):
+        res = simulate_rough_ensemble(
+            lambda _rng: m3, [om], engine="multislice", n_realisations=1
+        )
+        ms2 = simulate_multislice_2d(m2, omega_deg=[om], max_order=4)
+        worst = 0.0
+        for m in range(-4, 5):
+            eff3 = res.order_efficiency(m)
+            eff2 = ms2.order_efficiencies[m]
+            np.testing.assert_allclose(eff3, eff2, rtol=1e-6)
+            worst = max(worst, float(np.max(np.abs(eff3 / eff2 - 1))))
+        print(f"omega {om}: max rel err 3D-vs-2D multislice efficiency {worst:.3e}")
+
+
+def _rough_maker(dn_a: complex, **kw):
+    xs = _latent(dn_a)
+    grid = {"n_lines": 2, "ly_nm": 256.0, "dx_nm": 1.0, "dy_nm": 4.0, "dz_nm": 2.0}
+    grid.update(kw)
+
+    def make(rng):
+        return build_rough_grating_3d(
+            xs, psd_lpr=PSD_LPR, psd_lwr=PSD_LWR, rng=rng, **grid
+        )
+
+    return make
+
+
+def _median_ratio(a: np.ndarray, b: np.ndarray, valid: np.ndarray) -> float:
+    ok = valid & np.isfinite(a) & np.isfinite(b) & (b > 0)
+    assert ok.sum() > 100
+    return float(np.median(a[ok] / b[ok]))
+
+
+def test_multislice_low_contrast_equals_born():
+    dn_a = -2e-3 + 1.5e-3j
+    make = _rough_maker(1e-6 * dn_a / abs(dn_a))
+    omegas = [-10.0, 0.0, 10.0]
+    # Two realisations: the diffuse of a single realisation is identically zero.
+    kw = {"n_realisations": 2, "seed": 3}
+    ms = simulate_rough_ensemble(make, omegas, engine="multislice", **kw)
+    born = simulate_rough_ensemble(make, omegas, engine="born", **kw)
+    np.testing.assert_array_equal(ms.valid, born.valid)
+    med = _median_ratio(ms.diffuse, born.diffuse, born.valid)
+    print(f"low-contrast multislice/Born diffuse median {med:.6f}")
+    assert 0.999 <= med <= 1.001
+
+
+def test_epsilon_reference_matches_born_engine():
+    make = _rough_maker(-2e-3 + 1.5e-3j)
+    omegas = [-10.0, 0.0, 10.0]
+    kw = {"n_realisations": 2, "seed": 5}
+    ms = simulate_rough_ensemble(
+        make, omegas, engine="multislice", born_reference="epsilon", **kw
+    )
+    born = simulate_rough_ensemble(make, omegas, engine="born", **kw)
+    born_eps = ms.metadata["born_eps"]
+    assert born_eps.shape == born.diffuse.shape
+    med = _median_ratio(born_eps, born.diffuse, born.valid)
+    print(f"Born-epsilon reference / Born engine diffuse median {med:.6f}")
+    assert 0.99 <= med <= 1.01

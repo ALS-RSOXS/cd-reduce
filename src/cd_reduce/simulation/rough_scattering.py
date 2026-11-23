@@ -10,12 +10,15 @@ intensity ``<|A - <A>|^2>`` everywhere else.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING, Any, Literal
 
 import numpy as np
 
-from cd_reduce.simulation.multislice import _longitudinal_delta_kz_2d
+from cd_reduce.simulation.multislice import (
+    _longitudinal_delta_kz_2d,
+    _multislice_3d_mode_grid,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
@@ -39,8 +42,8 @@ class RoughEnsembleResult:
     valid : ndarray of bool
         False for evanescent modes, ``k0^2 - (k0 sin(omega) + qx)^2 - qy^2 <= 0``.
     coherent : ndarray of complex
-        ``<A>`` over realisations. The (0, 0) mode carries the unit beam, ``1 + <A>``.
-        NaN on invalid modes.
+        ``<A>`` over realisations. The (0, 0) mode carries the transmitted beam:
+        ``1 + <A>`` for Born, ``<c(0, 0)>`` for multislice. NaN on invalid modes.
     diffuse : ndarray
         Unbiased ``<|A - <A>|^2>``: ``sum_r |A_r - Abar|^2 / (n - 1)``, i.e.
         ``(<|A|^2> - |<A>|^2) * n / (n - 1)``. Zero when ``n = 1``. NaN on invalid
@@ -162,6 +165,80 @@ def _born_mode_amplitudes(
     return out
 
 
+class _Moments:
+    """Shifted per-mode moments of ``A_r`` (see `simulate_rough_ensemble` Notes)."""
+
+    def __init__(self) -> None:
+        self.n = 0
+
+    def add(self, amp: np.ndarray) -> None:
+        if self.n == 0:
+            self.shift = amp.copy()
+            self.s1 = np.zeros_like(amp)
+            self.t2 = np.zeros_like(amp)
+            self.u3 = np.zeros_like(amp)
+            self.s2 = np.zeros(amp.shape)
+            self.v4 = np.zeros(amp.shape)
+        b = amp - self.shift
+        b2 = np.abs(b) ** 2
+        self.s1 += b
+        self.s2 += b2
+        self.t2 += b * b
+        self.u3 += b2 * b
+        self.v4 += b2 * b2
+        self.n += 1
+
+    def result(self) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """``(coherent, diffuse, diffuse_var)`` (unbiased, ``ddof = 1``)."""
+        n, s2 = self.n, self.s2
+        c = self.s1 / n
+        c2 = np.abs(c) ** 2
+        sum_d = s2 - n * c2
+        sum_d2 = (
+            self.v4
+            + 2.0 * (s2 * c2 + np.real(self.t2 * np.conj(c) ** 2))
+            + n * c2**2
+            - 4.0 * np.real(self.u3 * np.conj(c))
+            + 2.0 * s2 * c2
+            - 4.0 * n * c2**2
+        )
+        if n > 1:
+            diffuse = np.maximum(sum_d, 0.0) / (n - 1)
+            diffuse_var = np.maximum(sum_d2 - sum_d**2 / n, 0.0) / (n - 1) / n
+        else:
+            diffuse = np.zeros(c.shape)
+            diffuse_var = np.full(c.shape, np.nan)
+        return self.shift + c, diffuse, diffuse_var
+
+
+def _multislice_mode_amplitudes(
+    structure: RefractiveIndexMap3D,
+    omega_arr: np.ndarray,
+    ix: np.ndarray,
+    iy: np.ndarray,
+) -> np.ndarray:
+    """Multislice exit-wave modes ``c(omega, qx, qy)`` on the cropped modes."""
+    qx = 2.0 * np.pi * np.fft.fftfreq(structure.nx, d=structure.dx_nm)
+    qy = 2.0 * np.pi * np.fft.fftfreq(structure.ny, d=structure.dy_nm)
+    qx_2d, qy_2d = np.meshgrid(qx, qy, indexing="ij")
+    sub = np.ix_(ix, iy)
+    return np.stack(
+        [
+            _multislice_3d_mode_grid(structure, float(om), qx_2d, qy_2d)[0][sub]
+            for om in omega_arr
+        ]
+    )
+
+
+def _scaled_contrast(structure: RefractiveIndexMap3D, eps: float):
+    """Copy of ``structure`` with ``delta_n`` scaled by ``eps``."""
+    return replace(
+        structure,
+        delta=structure.delta_ref + eps * (structure.delta - structure.delta_ref),
+        beta=structure.beta_ref + eps * (structure.beta - structure.beta_ref),
+    )
+
+
 def simulate_rough_ensemble(
     make_structure: Callable[[np.random.Generator], RefractiveIndexMap3D],
     omega_deg: Sequence[float] | np.ndarray,
@@ -191,8 +268,10 @@ def simulate_rough_ensemble(
     qx_max, qy_max
         Modes with ``|qx| <= qx_max`` and ``|qy| <= qy_max`` (nm^-1) are stored.
     born_reference, epsilon
-        Weak-scattering reference for the multislice engine; the Born engine is
-        already kinematic and ignores them.
+        Weak-scattering reference for the multislice engine: with ``"epsilon"``
+        each realisation is also propagated with ``epsilon * delta_n`` and
+        ``metadata["born_eps"]`` holds that diffuse divided by ``epsilon**2``.
+        The Born engine is already kinematic and ignores them.
 
     Notes
     -----
@@ -207,8 +286,6 @@ def simulate_rough_ensemble(
     if born_reference not in (None, "epsilon"):
         msg = f"born_reference must be None or 'epsilon', got {born_reference!r}"
         raise ValueError(msg)
-    if engine == "multislice":
-        raise NotImplementedError("the multislice engine is not implemented yet")
     n = int(n_realisations)
     if n < 1:
         raise ValueError("n_realisations must be >= 1")
@@ -216,9 +293,13 @@ def simulate_rough_ensemble(
     omega_arr = np.atleast_1d(np.asarray(omega_deg, dtype=np.float64))
     children = np.random.SeedSequence(int(seed)).spawn(n)
 
+    eps_ref = engine == "multislice" and born_reference == "epsilon"
+    eps = float(epsilon)
+    if eps_ref and not eps > 0:
+        raise ValueError("epsilon must be > 0")
     first: RefractiveIndexMap3D | None = None
-    shift = s1 = s2 = t2 = u3 = v4 = None
-    for r, child in enumerate(children):
+    mom, mom_eps = _Moments(), _Moments()
+    for child in children:
         st = make_structure(np.random.default_rng(child))
         if first is None:
             first = st
@@ -249,39 +330,17 @@ def simulate_rough_ensemble(
         ):
             raise ValueError("all realisations must share one grid and energy")
 
-        amp = _born_mode_amplitudes(st, omega_arr, ix, iy, qz_eval)
-        if r == 0:
-            shift = amp.copy()
-            zeros_c = np.zeros_like(amp)
-            s1, t2, u3 = zeros_c, zeros_c.copy(), zeros_c.copy()
-            s2, v4 = np.zeros(amp.shape), np.zeros(amp.shape)
-        b = amp - shift
-        b2 = np.abs(b) ** 2
-        s1 += b
-        s2 += b2
-        t2 += b * b
-        u3 += b2 * b
-        v4 += b2 * b2
+        if engine == "born":
+            mom.add(_born_mode_amplitudes(st, omega_arr, ix, iy, qz_eval))
+        else:
+            mom.add(_multislice_mode_amplitudes(st, omega_arr, ix, iy))
+            if eps_ref:
+                st_eps = _scaled_contrast(st, eps)
+                mom_eps.add(_multislice_mode_amplitudes(st_eps, omega_arr, ix, iy))
 
     assert first is not None
-    c = s1 / n
-    c2 = np.abs(c) ** 2
-    sum_d = s2 - n * c2
-    sum_d2 = (
-        v4
-        + 2.0 * (s2 * c2 + np.real(t2 * np.conj(c) ** 2))
-        + n * c2**2
-        - 4.0 * np.real(u3 * np.conj(c))
-        + 2.0 * s2 * c2
-        - 4.0 * n * c2**2
-    )
-    coherent = shift + c
-    if n > 1:
-        diffuse = np.maximum(sum_d, 0.0) / (n - 1)
-        diffuse_var = np.maximum(sum_d2 - sum_d**2 / n, 0.0) / (n - 1) / n
-    else:
-        diffuse = np.zeros(c.shape)
-        diffuse_var = np.full(c.shape, np.nan)
+    coherent, diffuse, diffuse_var = mom.result()
+    born_eps = mom_eps.result()[1] / eps**2 if eps_ref else None
 
     i0 = np.flatnonzero(ix == 0)
     j0 = np.flatnonzero(iy == 0)
@@ -290,12 +349,18 @@ def simulate_rough_ensemble(
     flux_factor = np.where(valid, cos_in / np.where(valid, cos_out, 1.0), np.nan)
     if i0.size and j0.size:
         flux_factor[:, i0[0], j0[0]] = np.where(valid[:, i0[0], j0[0]], 1.0, np.nan)
-        coherent[:, i0[0], j0[0]] += 1.0
+        if engine == "born":
+            coherent[:, i0[0], j0[0]] += 1.0
         diffuse[:, i0[0], j0[0]] = np.nan
+        if born_eps is not None:
+            born_eps[:, i0[0], j0[0]] = np.nan
         diffuse_var[:, i0[0], j0[0]] = np.nan
     coherent = np.where(valid, coherent, np.nan + 1j * np.nan)
     diffuse = np.where(valid, diffuse, np.nan)
     diffuse_var = np.where(valid, diffuse_var, np.nan)
+    extra = {}
+    if born_eps is not None:
+        extra["born_eps"] = np.where(valid, born_eps, np.nan)
 
     pitch = first.effective_pitch_nm
     n_per = max(round(first.lx_nm / pitch), 1)
@@ -328,5 +393,6 @@ def simulate_rough_ensemble(
             "qy_max": float(qy_max),
             "born_reference": born_reference,
             "epsilon": float(epsilon),
+            **extra,
         },
     )
