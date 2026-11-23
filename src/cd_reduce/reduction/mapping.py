@@ -32,6 +32,7 @@ Supports:
 
 from __future__ import annotations
 
+import math
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -287,15 +288,18 @@ class QMap2D:
 
     def smoothed(
         self,
-        sigma_bins: tuple[float, float] | None = (1.2, 1.8),
+        sigma_q: tuple[float, float] | None = None,
         *,
         dilate_bins: tuple[int, int] | None = None,
     ) -> NDArray[np.float64]:
         """Return display-ready 2D intensity map with normalized Gaussian smoothing or
         dilation.
 
-        - When ``sigma_bins`` is given, convolves ``H`` and ``N`` separately with a
-          Gaussian filter before dividing, masking bins far from sampled data.
+        - When ``sigma_q = (sx, sy)`` (nm^-1) is given, convolves ``H`` and ``N``
+          separately with a Gaussian filter before dividing, masking bins far from
+          sampled data. Each width is converted to bins with that axis's bin width
+          (mean width if the edges are non-uniform). Default ``None`` returns
+          ``mean`` unsmoothed.
         - When ``dilate_bins`` is given, widens single-bin Ewald arcs with a maximum
           filter of size ``dilate_bins``.
         """
@@ -308,8 +312,12 @@ class QMap2D:
             )
             return np.where(sampled & (md > 0), md, np.nan)
 
-        if sigma_bins is None or (sigma_bins[0] <= 0 and sigma_bins[1] <= 0):
+        if sigma_q is None or (sigma_q[0] <= 0 and sigma_q[1] <= 0):
             return self.mean
+        sigma_bins = (
+            float(sigma_q[0]) / float(np.mean(np.diff(self.x_edges))),
+            float(sigma_q[1]) / float(np.mean(np.diff(self.y_edges))),
+        )
 
         Hs = ndimage.gaussian_filter(self.H.astype(np.float64), sigma_bins)
         Ns = ndimage.gaussian_filter(self.N.astype(np.float64), sigma_bins)
@@ -328,11 +336,11 @@ class QMap2D:
         g_inv_nm: float | None = None,
         *,
         orders: tuple[int, ...] = (-3, -2, -1, 1, 2, 3),
-        sigma_bins: tuple[float, float] = (1.5, 1.5),
+        sigma_q: tuple[float, float] | None = None,
     ) -> dict[int, float]:
         """Measure per-order Bragg rod slope ``dQx / dQz`` [mrad] from row centroids."""
         G = g_inv_nm or float(2.0 * np.pi / float(self.metadata.get("Lambda_nm", 80.0)))
-        M = self.smoothed(sigma_bins=sigma_bins)
+        M = self.smoothed(sigma_q=sigma_q)
         qx = self.x_centers
         qz = self.y_centers
         out: dict[int, float] = {}
@@ -509,7 +517,7 @@ class QMap2D:
         self,
         ax: Axes | None = None,
         *,
-        sigma_bins: tuple[float, float] | None = (1.2, 1.8),
+        sigma_q: tuple[float, float] | None = None,
         dilate_bins: tuple[int, int] | None = None,
         dynamic_range_decades: float = 4.0,
         cmap: str = "turbo",
@@ -524,7 +532,7 @@ class QMap2D:
         else:
             fig = cast(Figure, ax.get_figure())
 
-        m = self.smoothed(sigma_bins=sigma_bins, dilate_bins=dilate_bins)
+        m = self.smoothed(sigma_q=sigma_q, dilate_bins=dilate_bins)
         pos = m[np.isfinite(m) & (m > 0)]
         if pos.size > 0:
             vmax = float(np.percentile(pos, 99.9))
@@ -741,6 +749,7 @@ def map_2d(
     x_range: tuple[float, float] | None = None,
     y_range: tuple[float, float] | None = None,
     bins: tuple[int, int] = (300, 200),
+    bin_q: tuple[float, float] | None = None,
     bin_px: int = 1,
     approximation: ApproximationMode = "correct",
     bg_mode: BackgroundMode = "corner",
@@ -770,7 +779,12 @@ def map_2d(
     cuts: Mapping[str, tuple[float, float]] | None = None,
     qy_off_g: tuple[float, float] = (0.15, 0.40),
 ) -> QMap2D:
-    """Convert a series of CCD frames into a 2D map ``I(x_domain, y_domain)``."""
+    """Convert a series of CCD frames into a 2D map ``I(x_domain, y_domain)``.
+
+    ``bin_q = (dx, dy)`` in nm^-1, when given, sets the bin counts to
+    ``ceil(range / bin_q)`` per axis and overrides ``bins``. Ranges not given
+    explicitly are derived from the data (or defaults) before binning.
+    """
     geo = geometry if isinstance(geometry, Geometry) else Geometry.from_dict(geometry)
     x_dom = normalize_domain_name(x_domain)
     y_dom = normalize_domain_name(y_domain)
@@ -895,6 +909,9 @@ def map_2d(
                 y_range = (-0.25, 0.25)
 
     nx, ny = int(bins[0]), int(bins[1])
+    if bin_q is not None:
+        nx = max(1, math.ceil((x_range[1] - x_range[0]) / bin_q[0] - 1e-9))
+        ny = max(1, math.ceil((y_range[1] - y_range[0]) / bin_q[1] - 1e-9))
     x_edges = np.linspace(x_range[0], x_range[1], nx + 1, dtype=np.float64)
     y_edges = np.linspace(y_range[0], y_range[1], ny + 1, dtype=np.float64)
     H = np.zeros((nx, ny), dtype=np.float64)
@@ -2032,6 +2049,7 @@ def plot_omega_butterfly(
         (20.0, "#8cff00"),
     ),
     label: str | None = None,
+    sigma_q: tuple[float, float] | None = None,
 ) -> Figure:
     """Render stacked thin CCD detector strips above the ``(Qx, Qz)`` butterfly map
     with matching ``Qy = 0`` Ewald-sphere arc overlays.
@@ -2084,7 +2102,7 @@ def plot_omega_butterfly(
 
     ax_m = fig.add_subplot(gs[-1])
     ax_m.set_facecolor("black")
-    m_sm = qmap.smoothed(sigma_bins=(1.2, 1.8))
+    m_sm = qmap.smoothed(sigma_q=sigma_q)
     pos = m_sm[np.isfinite(m_sm) & (m_sm > 0)]
     vmax = float(np.percentile(pos, 99.9)) if pos.size else 1.0
     vmin = max(vmax * 1e-4, float(pos.min()) if pos.size else 1e-4)

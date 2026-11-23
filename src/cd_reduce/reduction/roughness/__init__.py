@@ -25,6 +25,12 @@ from cd_reduce.reduction.roughness.extract import (
     quick_ler,
     sigma_window,
 )
+from cd_reduce.reduction.roughness.maps import (
+    DEFAULT_ROUGHNESS_QY_SLAB_G,
+    detector_q_pitch,
+    map_reduced,
+    plot_reduced_map,
+)
 from cd_reduce.reduction.roughness.psd_models import (
     PSD_MODELS,
     PsdFit,
@@ -51,6 +57,7 @@ from cd_reduce.reduction.roughness.scale import (
 )
 
 __all__ = [
+    "DEFAULT_ROUGHNESS_QY_SLAB_G",
     "PSD_MODELS",
     "CrossSection",
     "DevelopedLine",
@@ -68,6 +75,7 @@ __all__ = [
     "debye_waller_sigma",
     "decompose_edge_psd",
     "default_f_edges",
+    "detector_q_pitch",
     "edge_psd_kernel",
     "estimate_line_width",
     "extract_diffuse_ratio",
@@ -76,8 +84,10 @@ __all__ = [
     "form_factor_sq",
     "howto_prefactor",
     "isolation_row_psds",
+    "map_reduced",
     "order_efficiency",
     "order_scale",
+    "plot_reduced_map",
     "psd_mack",
     "psd_palasantzas",
     "psd_power_law",

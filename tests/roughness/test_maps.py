@@ -1,0 +1,115 @@
+import numpy as np
+import pytest
+
+from cd_reduce.reduction.geometry import Geometry
+from cd_reduce.reduction.mapping import QMap2D, map_2d
+from cd_reduce.reduction.roughness import (
+    ReducedPixels,
+    detector_q_pitch,
+    map_reduced,
+    plot_reduced_map,
+)
+
+
+def _px(Qx, Qy, Qz, D, var_D):
+    n = len(D)
+    D = np.asarray(D, float)
+    var_D = np.asarray(var_D, float)
+    # contrast 0.5 -> M = 2 D, var_M = 4 var_D
+    z = np.zeros(n)
+    return ReducedPixels(
+        Qx=np.asarray(Qx, float), Qy=np.asarray(Qy, float), Qz=np.asarray(Qz, float),
+        f=z, D=D, M=2 * D, var_M=4 * var_D, energy_ev=z, omega_deg=z,
+        frame_id=np.zeros(n, dtype=np.int64),
+    )  # fmt: skip
+
+
+def test_map_reduced_weighted_mean():
+    p = _px([0.1, 0.1], [0, 0], [0.2, 0.2], [1, 3], [1, 3])
+    qm = map_reduced(
+        p, "qx-qz", slab_halfwidth=0.1, bin_q=(0.2, 0.4),
+        x_range=(0, 0.2), y_range=(0, 0.4),
+    )  # fmt: skip
+    assert qm.mean[0, 0] == pytest.approx(1.5)
+    assert qm.metadata["quantity"] == "D"
+
+
+def test_map_reduced_slab():
+    p = _px([0.1, 0.1, 0.1], [0.0, 0.05, 0.3], [0.2] * 3, [1, 1, 100], [1, 1, 1])
+    qm = map_reduced(
+        p, "qx-qz", slab_center=0.0, slab_halfwidth=0.1, bin_q=(0.2, 0.4),
+        x_range=(0, 0.2), y_range=(0, 0.4),
+    )  # fmt: skip
+    assert qm.metadata["slab_halfwidth"] == 0.1
+    assert qm.metadata["slab_center"] == 0.0
+    assert qm.mean[0, 0] == pytest.approx(1.0)
+    qm2 = map_reduced(
+        p, "qy-qz", slab_halfwidth=0.2, bin_q=(0.1, 0.4),
+        x_range=(0, 0.4), y_range=(0, 0.4),
+    )  # fmt: skip
+    assert qm2.x_domain == "Qy"
+
+
+def test_map_reduced_empty_bins_nan():
+    p = _px([0.05], [0], [0.1], [1], [1])
+    qm = map_reduced(
+        p, "qx-qz", slab_halfwidth=0.1, bin_q=(0.1, 0.1),
+        x_range=(0, 0.2), y_range=(0, 0.2),
+    )  # fmt: skip
+    m = qm.mean
+    assert np.isfinite(m[0, 1]) and np.isnan(m[1, 1]) and np.isnan(m[0, 0])
+    ax = plot_reduced_map(qm, w=45.0)
+    assert ax.get_title()
+
+
+def test_detector_q_pitch_positive():
+    g = Geometry(u0_px=256, v0_px=256, Lb_px=985, Lambda_nm=80)
+    assert 0 < detector_q_pitch(g, 285.0) < 0.01
+
+
+def _frames():
+    from cd_reduce.reduction.frames import Frame
+
+    g = Geometry(u0_px=64, v0_px=64, Lb_px=985, Lambda_nm=80)
+    fr = [
+        Frame.from_array(
+            np.ones((128, 128)), energy_ev=285.0, omega_deg=om, exposure_s=1.0
+        )
+        for om in (0.0, 5.0)
+    ]  # fmt: skip
+    return fr, g
+
+
+def test_map_2d_bin_q_sets_bin_count():
+    fr, g = _frames()
+    qm = map_2d(
+        fr, g, x_range=(-0.4, 0.4), y_range=(0.0, 0.2), bins=(10, 10),
+        bin_q=(0.001, 0.002), bg_mode="none",
+    )  # fmt: skip
+    assert qm.H.shape == (800, 100)
+
+
+def _point(nx, half):
+    x = np.linspace(-1, 1, nx + 1)
+    H = np.zeros((nx, nx))
+    H[nx // 2, nx // 2] = 1.0
+    N = np.ones_like(H)
+    return QMap2D(H=H, N=N, x_edges=x, y_edges=x.copy(), x_domain="Qx", y_domain="Qz")
+
+
+def test_smoothed_default_is_unsmoothed():
+    qm = _point(40, 1)
+    np.testing.assert_array_equal(qm.smoothed(), qm.mean)
+
+
+def test_smoothed_sigma_q_in_inverse_nm():
+    widths = []
+    for nx in (100, 200):  # bin width halves
+        qm = _point(nx, 1)
+        img = qm.smoothed(sigma_q=(0.1, 0.1))
+        prof = np.nan_to_num(img[:, nx // 2])
+        xc = qm.x_centers
+        prof = prof / prof.sum()
+        widths.append(np.sqrt(np.sum(prof * xc**2) - np.sum(prof * xc) ** 2))
+    assert widths[0] == pytest.approx(widths[1], rel=0.05)
+    assert widths[0] == pytest.approx(0.1, rel=0.1)

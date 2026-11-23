@@ -178,7 +178,7 @@ def plot_qmap_grid(
     ewald_omega_deg: float | None = 0.0,
     energy_ev: float | None = None,
     cmap: str = "turbo",
-    sigma_bins: tuple[float, float] = (1.2, 1.8),
+    sigma_q: tuple[float, float] | None = None,
     dynamic_range: float = 1e4,
     xlim: tuple[float, float] | None = None,
     ylim: tuple[float, float] | None = None,
@@ -208,7 +208,7 @@ def plot_qmap_grid(
         for j, qm in enumerate(row):
             ax = axes[i, j]
             ax.set_facecolor("black")
-            img = qm.smoothed(sigma_bins=sigma_bins) if sigma_bins else qm.mean
+            img = qm.smoothed(sigma_q=sigma_q)
             pos = img[np.isfinite(img) & (img > 0)]
             if pos.size:
                 vmax = float(np.percentile(pos, 99.9))
