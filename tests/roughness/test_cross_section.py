@@ -141,11 +141,10 @@ def test_z_filling_converges_in_dz():
     )
     ref = _born_orders(xs, 0.05)
     tol = {2.0: None, 1.0: 0.015, 0.5: 0.005}
+    errs = {}
     for dz, t in tol.items():
         got = _born_orders(xs, dz)
-        err = max(float(np.max(np.abs(got[m] / ref[m] - 1))) for m in got)
-        print(f"dz={dz}: max rel err over m=1..4, omega=0,10: {err:.4f}")
-        for m in got:
-            print(f"  m={m}: {np.abs(got[m] / ref[m] - 1)}")
+        errs[dz] = max(float(np.max(np.abs(got[m] / ref[m] - 1))) for m in got)
         if t is not None:
-            assert err <= t, (dz, err)
+            assert errs[dz] <= t, (dz, errs[dz])
+    assert errs[0.5] < errs[1.0] < errs[2.0], errs

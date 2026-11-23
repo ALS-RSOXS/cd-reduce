@@ -85,17 +85,14 @@ def test_born_y_uniform_matches_born_2d():
     omegas = np.array([-12.0, -3.0, 0.0, 5.0, 20.0])
     res = simulate_rough_ensemble(lambda _rng: m3, omegas, n_realisations=1)
     b2 = simulate_born_2d(m2, omega_deg=omegas, max_order=4)
-    worst = 0.0
     for m in (-4, -3, -2, -1, 1, 2, 3, 4):
         eff3 = res.order_efficiency(m)
         eff2 = b2.order_efficiencies[m]
         np.testing.assert_allclose(eff3, eff2, rtol=1e-6)
-        worst = max(worst, float(np.max(np.abs(eff3 / eff2 - 1))))
         assert np.all(np.abs(res.order_qz(m) - b2.order_qz[m]) < 1e-12)
     np.testing.assert_allclose(
         res.order_efficiency(0), b2.order_efficiencies[0], rtol=1e-6
     )
-    print(f"max rel err 3D-vs-2D order efficiency: {worst:.3e}")
 
 
 def test_evanescent_modes_invalid():
@@ -204,9 +201,6 @@ def test_debye_waller_from_ensemble():
     for m in (1, 2, 3, 4):
         ratio = rough.order_efficiency(m)[0] / ref.order_efficiency(m)[0]
         expect = np.exp(-(m**2) * g**2 * s2)
-        print(
-            f"m={m} ratio={ratio:.5f} expect={expect:.5f} rel={ratio / expect - 1:+.4f}"
-        )
         assert ratio == pytest.approx(expect, rel=0.03)
 
 
@@ -256,13 +250,10 @@ def test_multislice_y_uniform_matches_multislice_2d():
             lambda _rng: m3, [om], engine="multislice", n_realisations=1
         )
         ms2 = simulate_multislice_2d(m2, omega_deg=[om], max_order=4)
-        worst = 0.0
         for m in range(-4, 5):
             eff3 = res.order_efficiency(m)
             eff2 = ms2.order_efficiencies[m]
             np.testing.assert_allclose(eff3, eff2, rtol=1e-6)
-            worst = max(worst, float(np.max(np.abs(eff3 / eff2 - 1))))
-        print(f"omega {om}: max rel err 3D-vs-2D multislice efficiency {worst:.3e}")
 
 
 def _rough_maker(dn_a: complex, **kw):
@@ -294,7 +285,6 @@ def test_multislice_low_contrast_equals_born():
     born = simulate_rough_ensemble(make, omegas, engine="born", **kw)
     np.testing.assert_array_equal(ms.valid, born.valid)
     med = _median_ratio(ms.diffuse, born.diffuse, born.valid)
-    print(f"low-contrast multislice/Born diffuse median {med:.6f}")
     assert 0.999 <= med <= 1.001
 
 
@@ -309,7 +299,6 @@ def test_epsilon_reference_matches_born_engine():
     born_eps = ms.metadata["born_eps"]
     assert born_eps.shape == born.diffuse.shape
     med = _median_ratio(born_eps, born.diffuse, born.valid)
-    print(f"Born-epsilon reference / Born engine diffuse median {med:.6f}")
     assert 0.99 <= med <= 1.01
 
 
