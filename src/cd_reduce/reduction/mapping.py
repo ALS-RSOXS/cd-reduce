@@ -278,7 +278,9 @@ class QMap2D:
     def mean(self) -> NDArray[np.float64]:
         """Unsmoothed mean intensity ``H / N`` per bin (``NaN`` where ``N == 0``)."""
         with np.errstate(divide="ignore", invalid="ignore"):
-            return np.where(self.N > 0, self.H / np.maximum(self.N, 1.0), np.nan)
+            return np.where(
+                self.N > 0, self.H / np.where(self.N > 0, self.N, 1.0), np.nan
+            )
 
     def smoothed(
         self,
@@ -298,7 +300,7 @@ class QMap2D:
           filter of size ``dilate_bins``.
         """
         if dilate_bins is not None:
-            m = np.where(self.N > 0, self.H / np.maximum(self.N, 1.0), 0.0)
+            m = np.nan_to_num(self.mean, nan=0.0)
             md = ndimage.maximum_filter(m, size=dilate_bins)
             sampled = (
                 ndimage.maximum_filter((self.N > 0).astype(np.uint8), size=dilate_bins)
@@ -416,10 +418,16 @@ class QMap2D:
             )
 
         with np.errstate(divide="ignore", invalid="ignore"):
-            mean_1d = np.where(n_1d > 0, h_1d / np.maximum(n_1d, 1.0), np.nan)
-            sigma_1d = np.where(
-                n_1d > 0, np.abs(mean_1d) / np.sqrt(np.maximum(n_1d, 1.0)), np.nan
-            )
+            pos = n_1d > 0
+            n_safe = np.where(pos, n_1d, 1.0)
+            mean_1d = np.where(pos, h_1d / n_safe, np.nan)
+            if self.metadata.get("quantity") == "D":
+                # exposure-weighted map: H = detected photons, N = exposure
+                sigma_1d = np.where(
+                    pos, np.sqrt(np.maximum(h_1d, 0.0)) / n_safe, np.nan
+                )
+            else:
+                sigma_1d = np.where(pos, np.abs(mean_1d) / np.sqrt(n_safe), np.nan)
         cuts = dict(self.cuts)
         if cut_range is not None:
             cuts[ortho_name] = cut_range

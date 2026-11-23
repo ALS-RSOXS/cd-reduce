@@ -133,3 +133,33 @@ def test_smoothed_sigma_q_in_inverse_nm():
         widths.append(np.sqrt(np.sum(prof * xc**2) - np.sum(prof * xc) ** 2))
     assert widths[0] == pytest.approx(widths[1], rel=0.05)
     assert widths[0] == pytest.approx(0.1, rel=0.1)
+
+
+def test_map_reduced_mean_no_floor_when_exposure_below_one():
+    # d_per_photon >> 1 so N = sum(1/d) << 1; mean must still be H / N.
+    p = _px([0.1, 0.1], [0, 0], [0.2, 0.2], [50.0, 150.0], [25.0, 25.0])
+    qm = map_reduced(
+        p, "qx-qz", slab_halfwidth=0.1, bin_q=(0.2, 0.4),
+        x_range=(0, 0.2), y_range=(0, 0.4),
+    )  # fmt: skip
+    assert qm.N[0, 0] == pytest.approx(0.08)
+    assert qm.mean[0, 0] == pytest.approx(qm.H[0, 0] / qm.N[0, 0])
+    assert qm.mean[0, 0] == pytest.approx(100.0)
+    assert qm.smoothed(dilate_bins=(1, 1))[0, 0] == pytest.approx(100.0)
+    tr = qm.slice_1d("Qx")
+    assert tr.intensity[0] == pytest.approx(100.0)
+    # exposure-weighted sigma = sqrt(H) / N (H = detected photons = 8)
+    assert tr.sigma[0] == pytest.approx(np.sqrt(8.0) / 0.08)
+
+
+def test_count_map_mean_and_slice_unchanged():
+    H = np.array([[4.0, 0.0], [9.0, 2.0]])
+    N = np.array([[2.0, 0.0], [3.0, 1.0]])
+    qm = QMap2D(
+        H=H, N=N, x_edges=np.array([0.0, 1.0, 2.0]),
+        y_edges=np.array([0.0, 1.0, 2.0]), x_domain="Qx", y_domain="Qz",
+    )  # fmt: skip
+    np.testing.assert_allclose(qm.mean, [[2.0, np.nan], [3.0, 2.0]])
+    tr = qm.slice_1d("Qx")
+    np.testing.assert_allclose(tr.intensity, [2.0, 11.0 / 4.0])
+    np.testing.assert_allclose(tr.sigma, [2.0 / np.sqrt(2.0), 2.75 / 2.0])
