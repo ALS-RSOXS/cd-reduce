@@ -1,13 +1,56 @@
-# 3D rough line gratings
+# 3D line gratings
 
-[`RefractiveIndexMap3D`](../../api/python/simulation.md#cd_reduce.simulation.structures.RefractiveIndexMap3D) extends the optical-constant map to 3D $(x, y, z)$. Rough line gratings built in 3D give line-placement (LPR) and line-width (LWR) roughness and the off-specular diffuse in $(Q_x, Q_y, Q_z)$. There are two builders:
+[`RefractiveIndexMap3D`](../../api/python/simulation.md#cd_reduce.simulation.structures.RefractiveIndexMap3D) extends the optical-constant map to 3D $(x, y, z)$, with $x$ across the lines, $y$ along them and $z$ through the film. Any 2D cross section can be extruded into 3D and given rough edges, then simulated with the Born or the multislice engine.
 
-- `build_grating_3d` makes a parameterised trapezoidal grating;
-- `build_rough_grating_3d` makes a supercell of independent rough lines from a reduction cross section (`LatentFilm`, `DevelopedLine`).
+The figure shows three gratings built from the same cross-section objects the roughness reduction uses:
 
-`simulate_rough_ensemble` averages many realisations with the Born or the multislice engine.
+- **a–c, clean developed line** (`DevelopedLine`, no roughness). The scattering is only the Bragg orders at $Q_y = 0$.
+- **d–f, rough developed line.** The same line with independent placement (LPR) and width (LWR) roughness on every line. The orders lose intensity and the lost power appears as diffuse streaks along $Q_y$.
+- **g–i, rough latent image** (`LatentFilm`). An undeveloped resist film: exposure decays from the top (chemical contrast, g) and the exposed regions shrink, leaving a shallow relief. The contrast is far weaker than for the developed line, so the scattering is several decades fainter (i).
 
-![3D rough grating slice, simulated (Qx, Qy) diffuse streak, 3D multislice (Qy, Qz) sheet, and diffuse traces](../../assets/images/sim_3d_rough_gratings.png)
+Columns are the $(x, z)$ cross-section, the $(x, y)$ top view at mid-height, and the Born-ensemble intensity on the $(Q_x, Q_y)$ mode grid at $\omega = 0$ (log scale, zero order removed).
+
+![Clean developed line, rough developed line and rough latent image: cross-sections, top views and Born-ensemble scattering in (Qx, Qy)](../../assets/images/sim_3d_gratings.png)
+
+The figure is produced by `examples/simulation_3d_gratings.py`. The core of it:
+
+```python
+from functools import partial
+
+import numpy as np
+import cd_reduce as cdr
+
+developed = cdr.DevelopedLine(
+    L=80.0, w=45.0, s=1.0, h_d=30.0, dn_A=-2.0e-3 + 1.5e-3j, energy_ev=285.0
+)
+latent = cdr.LatentFilm(
+    L=80.0, w=45.0, s=2.5, h=40.0, dh=4.0, lam=25.0,
+    r=1.15 + 0.05j, dn_A=-2.0e-3 + 1.5e-3j, energy_ev=285.0,
+)
+psd_lpr = partial(cdr.psd_palasantzas, sigma_nm=1.5, xi_nm=25.0, hurst=0.7)
+psd_lwr = partial(cdr.psd_palasantzas, sigma_nm=2.0, xi_nm=12.0, hurst=0.5)
+
+
+def maker(xs, rough):
+    def make(rng):
+        return cdr.build_rough_grating_3d(
+            xs, n_lines=8, ly_nm=1024.0, dx_nm=1.0, dy_nm=4.0, dz_nm=1.0,
+            psd_lpr=psd_lpr if rough else None,
+            psd_lwr=psd_lwr if rough else None,
+            rng=rng,
+        )
+    return make
+
+
+clean = cdr.simulate_rough_ensemble(maker(developed, False), [0.0], n_realisations=8)
+rough = cdr.simulate_rough_ensemble(maker(developed, True), [0.0], n_realisations=8)
+latent_res = cdr.simulate_rough_ensemble(maker(latent, True), [0.0], n_realisations=8)
+
+# Detector-comparable intensity per mode: Bragg orders + diffuse
+intensity = np.abs(rough.coherent[0]) ** 2 * rough.flux_factor[0] + rough.diffuse_flux[0]
+```
+
+Pass `engine="multislice"` to `simulate_rough_ensemble` to run the same structures through the multislice propagator instead (see [Ensembles of rough gratings](#ensembles-of-rough-gratings)).
 
 ## Edge roughness from two PSDs
 

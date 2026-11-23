@@ -53,7 +53,7 @@ ms_2d = cdr.simulate_multislice_2d(struct_2d, omega_deg=omegas, max_order=4)
 | --- | --- |
 | [Data reduction](guides/reduction/index.md) | FITS loading, thin-strip spot detection, Laue geometry calibration, rod-verticality refinement, background subtraction, $\mathrm{Si_3N_4}$ transmission, and beam walk-off |
 | [Reciprocal-space mapping](guides/mapping/index.md) | 2D $I$ vs. $Q$ projections across `(Qx, Qz)`, `(Qx, Qy)`, `(Qy, Qz)`, `(Qr, Qz)`, `(signed_Qr, Qz)`, exact vs. small-angle Ewald geometry, specular 1D ridges $I(Q_x;\omega)$ & Bragg rods $I_m(Q_z)$, and off-specular diffuse cuts & Born LER PSD |
-| [Building and simulating structures](guides/simulation/index.md) | General 2D & 3D optical constant maps $\delta(\mathbf{r}) + i\beta(\mathbf{r})$, Born vs. Split-Step Fourier Multislice comparison, internal wavefields, and 3D rough line gratings |
+| [Building and simulating structures](guides/simulation/index.md) | General 2D & 3D optical constant maps $\delta(\mathbf{r}) + i\beta(\mathbf{r})$, Born vs. Split-Step Fourier Multislice comparison, internal wavefields, and 3D line gratings (developed and latent) |
 | [Theory](theory/overview.md) | 3D Ewald sphere geometry, kinematic Born form-factor and Palasantzas roughness PSD equations, and paraxial Split-Step Fourier Multislice propagation |
 | [API Reference](api/index.md) | Auto-generated Python API reference for `cd_reduce`, `cd_reduce.loader`, `cd_reduce.reduction`, and `cd_reduce.simulation` |
 
