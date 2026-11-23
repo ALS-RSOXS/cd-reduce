@@ -58,17 +58,22 @@ It also drops pixels in the Bragg discs (`R_B`), behind the beamstop, where the 
 
 ```python
 frames_e = [fr for fr in loader.frames if np.isclose(fr.energy_ev, 285.0)]
+beamstop = (
+    cdr.build_beamstop_mask(loader.frames, loader.geometry)
+    if loader.auto_beamstop_mask else None
+)
 pixels = cdr.ReducedPixels.concat([
     cdr.reduce_frame(
         fr, loader.geometry, xs_by_energy[285.0],
         scale=fit.scale_by_energy[285.0], adu_per_photon=27.0,
-        R_B=0.008, keep=0.1, frame_id=i,
+        R_B=0.008, keep=0.1, bg_mode=loader.bg_mode, beamstop_mask=beamstop,
+        omega_refinement=loader.omega_refinement, frame_id=i,
     )
     for i, fr in enumerate(frames_e)
 ])
 ```
 
-`loader.reduce_roughness(xs_by_energy)` does this for every frame and energy, with `scale="bragg_orders"` by default.
+Pass the loader's `bg_mode`, beamstop mask and ω refinement as above, or the pixels will differ from the loader's. `loader.reduce_roughness(xs_by_energy)` does this for every frame and energy, with `scale="bragg_orders"` by default.
 
 ![A synthetic frame and its reduced M with the Bragg, beamstop and contrast masks applied](../../assets/images/roughness/howto_frame_and_M.png)
 
