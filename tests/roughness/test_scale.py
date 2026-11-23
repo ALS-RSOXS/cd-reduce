@@ -75,3 +75,13 @@ def test_order_scale_uses_omega_true_column():
     fit = order_scale(t, XS, adu_per_photon=ADU)
     assert abs(fit.sigma_ler / SIG_TRUE - 1) < 0.05
     assert abs(fit.scale_by_energy[285.0] / C_TRUE - 1) < 0.02
+
+
+def test_order_scale_energy_without_usable_rows_raises():
+    import pytest
+
+    t = _table()
+    # cos(theta_out) < 0 for every 285 eV row: rows present, none usable
+    t.loc[t["energy_ev"] == 285.0, "Qz"] = -5.0
+    with pytest.raises(ValueError, match="285"):
+        order_scale(t, XS, adu_per_photon=ADU)

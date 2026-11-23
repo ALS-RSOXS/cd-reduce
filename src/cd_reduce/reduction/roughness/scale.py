@@ -129,6 +129,13 @@ def order_scale(
         raise ValueError("too few usable rows for the order fit")
     lens = np.array([x.L for x in xs_row])
     ne = len(energies)
+    for i, e in enumerate(energies):
+        if not np.any(ok & (eidx == i)):
+            msg = (
+                f"no usable order rows at {e} eV (order efficiency not finite "
+                "and positive for every row); drop the energy or check Qz/omega"
+            )
+            raise ValueError(msg)
 
     def resid(p: NDArray[np.float64]) -> NDArray[np.float64]:
         model = p[eidx] + np.log(base * _debye_waller(ms, lens, p[ne]))
