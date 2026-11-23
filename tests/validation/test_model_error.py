@@ -31,12 +31,15 @@ from cd_reduce.reduction.roughness import (
 
 from . import reference as ref
 from .forward.ensemble_frames import ensemble_vs_model_ratio
+from .forward.matched_model import matched_model_frames
 from .forward.model_frames import render_model_frame
 from .forward.orders import order_table
 
 pytestmark = pytest.mark.validation
 
 ROUGH = ("lpr", "lwr", "both", "independent")
+# R24: single-mode separable-model tests run on the developed line (assumption 4).
+MODEL_CASES = ("lpr_developed", "lwr_developed", "both", "independent")
 # Sum both frames over ~3 x 6 ensemble modes before taking ratios: the per-mode
 # diffuse of a 2-realisation ensemble is exponentially distributed (R20c).
 BLOCK_PX = (40, 25)
@@ -89,7 +92,18 @@ def _model_frames(ensembles, case: str, seed: int = 0):
     ]  # fmt: skip
 
 
-def _pooled_frames(ensembles, case: str):
+def _matched_frames(ensembles, case: str, seed: int = 0):
+    """Noiseless matched-realisation first-order frames of ensemble ``seed`` (R25)."""
+    cfg = ensembles.cfg
+    return matched_model_frames(
+        ensembles.result(case, seed), ensembles.edges(case, seed),
+        ref.CASES[case]["xs"](285.0), cfg["geometry"], scale=ref.SCALE,
+        shape=cfg["shape"], adu_per_photon=ref.ADU_PER_PHOTON,
+        sigma_ler_full=ensembles.sigma_e(case, seed), ly_nm=cfg["ly_nm"],
+    )  # fmt: skip
+
+
+def _pooled_frames(ensembles, case: str, matched: bool = True):
     """Noiseless ensemble and model frames per omega, summed over the K seeds."""
 
     def total(frames):
@@ -101,28 +115,35 @@ def _pooled_frames(ensembles, case: str):
         )  # fmt: skip
 
     ens = [ensembles.frames(case, poisson=False, seed=s) for s in ensembles.seeds(True)]
-    mod = [_model_frames(ensembles, case, s) for s in ensembles.seeds(True)]
+    model = _matched_frames if matched else _model_frames
+    mod = [model(ensembles, case, s) for s in ensembles.seeds(True)]
     return (
         [total(fr) for fr in zip(*ens, strict=True)],
         [total(fr) for fr in zip(*mod, strict=True)],
     )
 
 
-def ratio_medians(ensembles, case: str) -> list[tuple[float, float]]:
+def ratio_medians(
+    ensembles, case: str, matched: bool = True, min_blocks: int = 10
+) -> list[tuple[float, float]]:
     """``(omega, median ensemble/model block ratio)`` per omega, inside the cut.
 
-    Frames are pooled over the K seed ensembles (R22); blocks near the nulls of
+    The model is the matched-realisation first-order prediction (R25), or with
+    ``matched=False`` the HOWTO model on the realised spectra. Frames are pooled
+    over the K seed ensembles (R22); blocks near the nulls of
     the first-order edge factor are excluded (``NULL_LEVEL``).
     """
     cfg = ensembles.cfg
     xs = ref.CASES[case]["xs"](285.0)
     meds = []
-    for fe, fm in zip(*_pooled_frames(ensembles, case), strict=True):
+    for fe, fm in zip(*_pooled_frames(ensembles, case, matched), strict=True):
         r = ensemble_vs_model_ratio(
             fe, fm, cfg["geometry"], pitch_nm=xs.L, block_px=BLOCK_PX,
             qx_max=ensembles.qx_max(case, pooled=True), null_level=NULL_LEVEL,
         )  # fmt: skip
-        assert r.size >= 10, f"{case} omega {fe.omega_deg}: only {r.size} blocks"
+        assert r.size >= min_blocks, (
+            f"{case} omega {fe.omega_deg}: only {r.size} blocks"
+        )
         meds.append((fe.omega_deg, round(float(np.median(r)), 4)))
     return meds
 
@@ -192,14 +213,38 @@ def _check_sigma_window(ensembles, case: str):
     assert not bad, f"{case} sigma_win / realised truth: {res}"
 
 
-@pytest.mark.parametrize("case", ROUGH)
+@pytest.mark.parametrize("case", MODEL_CASES)
 def test_ensemble_matches_model(ensembles, case):
     _check_ratio(ensembles, case)
 
 
-@pytest.mark.parametrize("case", ROUGH)
+@pytest.mark.parametrize("case", MODEL_CASES)
 def test_ensemble_recovers_sigma_window(ensembles, case):
     _check_sigma_window(ensembles, case)
+
+
+def test_latent_nonseparable_report(ensembles):
+    """Report only (R24): single-mode latent film violates HOWTO assumption 4.
+
+    The latent film's shrinkage sits inside the depth integral, so the edge
+    spectrum is not separable across the blurred edge and the first-order
+    model is biased 4-7% for LPR-only / LWR-only (the bias cancels when both
+    modes are present). See task-8-investigation.md. Asserts finiteness only.
+    """
+    out = {}
+    for case in ("lpr", "lwr"):
+        meds = ratio_medians(ensembles, case, min_blocks=1)
+        howto = ratio_medians(ensembles, case, matched=False, min_blocks=1)
+        sw = sigma_window_ratios(ensembles, case)
+        assert all(np.isfinite(m) for _, m in meds + howto)
+        assert all(np.isfinite(v) for v in sw.values())
+        out[case] = {
+            "matched_ratio_median_by_omega": {str(om): m for om, m in meds},
+            "realised_spectra_ratio_median_by_omega": {str(om): m for om, m in howto},
+            "sigma_win_ratio": sw,
+        }
+    RESULTS.mkdir(exist_ok=True)
+    (RESULTS / "latent_nonseparable.json").write_text(json.dumps(out, indent=1))
 
 
 def m_invariance_chi2(ensembles, case: str) -> tuple[float, int]:

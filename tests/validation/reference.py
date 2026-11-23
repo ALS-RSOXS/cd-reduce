@@ -65,6 +65,8 @@ CASES: dict[str, dict] = {
     "lwr": {"xs": latent, "psd_lpr": None, "psd_lwr": PSD_LWR},
     "both": {"xs": latent, "psd_lpr": PSD_LPR, "psd_lwr": PSD_LWR},
     "independent": {"xs": latent, "psd_lpr": _psd_e_lpr, "psd_lwr": _psd_e_lwr},
+    "lpr_developed": {"xs": developed, "psd_lpr": PSD_LPR, "psd_lwr": None},
+    "lwr_developed": {"xs": developed, "psd_lpr": None, "psd_lwr": PSD_LWR},
     "both_developed": {"xs": developed, "psd_lpr": PSD_LPR, "psd_lwr": PSD_LWR},
 }
 

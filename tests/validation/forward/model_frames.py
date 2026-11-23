@@ -39,10 +39,13 @@ def render_model_frame(
     beamstop_radius_px: float = 30,
     rng: np.random.Generator,
     poisson: bool = True,
+    M: np.ndarray | None = None,
 ) -> Frame:
     """Render one frame (ADU) for the given cross section and PSDs.
 
     With ``poisson=False`` the expected counts are returned without noise.
+    ``M`` (pixel array, nm^3) replaces the PSD combination
+    ``4 sin^2 P + cos^2 W`` (used by the matched-realisation model).
     """
     E = xs.energy_ev
     k = 2 * np.pi * E / _HC_EV_NM
@@ -60,11 +63,12 @@ def render_model_frame(
     norm = howto_prefactor(k, xs, W) * np.asarray(qm.solid_angle_sr) * A * Tm
     contrast = xs.gamma2(Qz) * np.exp(-(Qx**2) * xs.s**2)
 
-    M = np.zeros_like(Qx)
-    if psd_lpr is not None:
-        M += 4 * np.sin(Qx * xs.w / 2) ** 2 * psd_lpr(f)
-    if psd_lwr is not None:
-        M += np.cos(Qx * xs.w / 2) ** 2 * psd_lwr(f)
+    if M is None:
+        M = np.zeros_like(Qx)
+        if psd_lpr is not None:
+            M += 4 * np.sin(Qx * xs.w / 2) ** 2 * psd_lpr(f)
+        if psd_lwr is not None:
+            M += np.cos(Qx * xs.w / 2) ** 2 * psd_lwr(f)
     lam = scale * exposure_s * M * contrast * norm
 
     area = pixel_q_area(Qx, Qy)
