@@ -4,6 +4,12 @@ Transmission CD-RSoXS and CD-SAXS data reduction, reciprocal-space mapping, and 
 
 ![Experimental CCD detector strips across sample tilts in transmission CD-RSoXS](assets/images/detector_strips_omega.png)
 
+Each detector frame is one slice of the Ewald sphere through the grating's reciprocal-space rods; tilting the sample slides that slice along the rods and maps the frames into $(Q_x, Q_y, Q_z)$:
+
+![Ewald sphere near the origin with grating rods and their intersections, and the (Qx, Qz) coverage of a tilt sweep](assets/images/ewald_sphere_rods.png)
+
+See [Ewald sphere and geometry](theory/geometry_and_ewald.md) for the interactive version.
+
 ## Installation
 
 ```bash

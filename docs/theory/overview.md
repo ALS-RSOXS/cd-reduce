@@ -24,6 +24,10 @@ In the sample frame $(\hat{\mathbf{x}}, \hat{\mathbf{y}}, \hat{\mathbf{z}})$:
 
 As the sample rotates in $\omega$, the Ewald sphere sweeps through the reciprocal-space Bragg truncation rods at $Q_x = m G_0$, encoding the 2D cross-sectional profile $n(x, z) = 1 - \delta(x, z) + i\beta(x, z)$ along $Q_z$ and the 3D line-edge / line-width roughness along $Q_y$.
 
+![Ewald sphere near the origin with the grating rods and their intersections at a 15 degree tilt, and the (Qx, Qz) butterfly of a ±40 degree sweep](../assets/images/ewald_sphere_rods.png)
+
+Each frame samples every rod at one $Q_z$ (dots); the sweep fills the butterfly. [Explore it interactively](geometry_and_ewald.md) on the Ewald sphere page.
+
 ## Kinematic vs. dynamical regimes
 
 In hard X-ray CD-SAXS ($E \gtrsim 10\ \mathrm{keV}$), $\delta \sim 10^{-6}$ and $\beta \sim 10^{-8}$, so the kinematic First Born Approximation holds to high accuracy. Near soft X-ray absorption edges in CD-RSoXS (such as the Carbon $K$-edge at $280\text{--}290\ \mathrm{eV}$), the optical constants $\delta, \beta \sim 10^{-3}\text{--}10^{-2}$ become two to three orders of magnitude larger. Over a grating thickness $h \sim 50\text{--}150\ \mathrm{nm}$ (and tilted path length $h / \cos\omega$), phase shifts $k_0 \delta h \sim 0.3\text{--}1\ \mathrm{rad}$ and linear absorption $k_0 \beta h$ produce:

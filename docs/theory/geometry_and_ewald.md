@@ -1,4 +1,26 @@
+---
+extra_javascript:
+  - javascripts/ewald-figure.js
+extra_css:
+  - stylesheets/ewald-figure.css
+---
+
 # Ewald sphere and geometry
+
+A detector frame records the scattering that satisfies elastic scattering, $|\mathbf{k}_i + \mathbf{Q}| = |\mathbf{k}_i|$: every pixel sees one point on the Ewald sphere of radius $k = 2\pi/\lambda$, which passes through the origin of reciprocal space. A line grating scatters only onto rods at $Q_x = mG$ ($G = 2\pi/\Lambda$), so each frame samples each rod at one $Q_z$. Tilting the sample by $\omega$ tilts the sphere relative to the rods and slides those points along them; a sweep of $\omega$ traces out the $(Q_x, Q_z)$ "butterfly" that the reduction maps.
+
+<div class="ewald-figure" data-ewald data-energy="285" data-pitch="80" data-omega="15" data-mmax="4" data-fixtures="../../assets/ewald/fixtures.json">
+  <img src="../../assets/images/ewald_sphere_rods.png" alt="Ewald sphere, grating rods and their intersections at a 15 degree tilt">
+</div>
+
+In the sample frame the sphere's centre is $\mathbf{C} = (k\sin\omega,\, 0,\, -k\cos\omega)$, and rod $m$ meets it at
+
+$$
+Q_z(m, \omega) = -k\cos\omega + \sqrt{k^2 - (mG - k\sin\omega)^2},
+$$
+
+with no intersection when the root is imaginary. For small $mG/k$ this is $Q_z \approx mG\tan\omega - (mG)^2/(2k\cos\omega)$: the flat-detector term plus the Ewald curvature. The figure evaluates this closed form; `tests/test_ewald_fixtures.py` checks it against [`compute_pixel_q`](../api/python/reduction.md#cd_reduce.reduction.geometry.compute_pixel_q) to $10^{-9}\,\mathrm{nm^{-1}}$.
+
 
 ## 3D Detector-to-Sample Ewald Transformation
 
@@ -22,7 +44,7 @@ $$
 \mathbf{Q}_{\mathrm{lab}} = k_0(\hat{\mathbf{s}} - \hat{\mathbf{z}}) = k_0 \begin{pmatrix} \hat{s}_u \\ \hat{s}_v \\ \hat{s}_z - 1 \end{pmatrix}
 $$
 
-Rotating from the lab frame into the sample frame via sample tilt $\omega_{\mathrm{eff}} = \omega - \omega_0$ about the lab $u$-axis ($R_x(-\omega_{\mathrm{eff}})$) and grating in-plane azimuth $\psi$ about the sample normal ($R_z(-\psi)$) gives:
+Rotating from the lab frame into the sample frame via sample tilt $\omega_{\mathrm{eff}} = \omega + \omega_0$ (`Geometry.omega0_deg`) about the lab $u$-axis ($R_x(-\omega_{\mathrm{eff}})$) and grating in-plane azimuth $\psi$ about the sample normal ($R_z(-\psi)$) gives:
 
 $$
 \begin{pmatrix} Q_y \\ Q_x \\ Q_z \end{pmatrix} = R_z(-\psi)\,R_x(-\omega_{\mathrm{eff}})\,\mathbf{Q}_{\mathrm{lab}}
@@ -39,8 +61,12 @@ $$
 so the sample-frame coordinates reduce to:
 
 $$
-Q_x \approx Q_{\mathrm{lab},v}\cos\omega_{\mathrm{eff}}, \qquad Q_y \approx Q_{\mathrm{lab},u}, \qquad Q_z \approx -Q_{\mathrm{lab},v}\sin\omega_{\mathrm{eff}}
+Q_x \approx Q_{\mathrm{lab},v}\cos\omega_{\mathrm{eff}}, \qquad Q_y \approx Q_{\mathrm{lab},u}, \qquad Q_z \approx Q_{\mathrm{lab},v}\sin\omega_{\mathrm{eff}} = Q_x \tan\omega_{\mathrm{eff}}
 $$
+
+Along each rod this drops the Ewald curvature term $-(mG)^2/(2k\cos\omega)$, so the small-angle $Q_z$ is offset from the exact one even at $\omega = 0$, and the offset grows with order and tilt:
+
+![Qz on rods m = 1 to 4 versus tilt, exact Ewald against the small-angle flat-detector form, with their difference](../assets/images/ewald_exact_vs_small_angle.png)
 
 ## Radial and Angular Coordinates
 
