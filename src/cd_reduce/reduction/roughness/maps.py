@@ -40,17 +40,18 @@ def map_reduced(
     x_range: tuple[float, float] | None = None,
     y_range: tuple[float, float] | None = None,
 ) -> QMap2D:
-    """Bin reduced pixels into an inverse-variance-weighted ``D`` map.
+    """Bin reduced pixels into an exposure-weighted ``D`` map.
 
     Plane ``"qx-qz"`` keeps ``|Qy - slab_center| <= slab_halfwidth``; plane
-    ``"qy-qz"`` slabs on Qx. Per bin ``H = sum(D / var_D)`` and
-    ``N = sum(1 / var_D)``, so ``QMap2D.mean`` is the weighted mean of ``D``.
-    Empty bins are NaN.
-
-    ``var_D = var_M * (D / M)**2`` (``D / M`` is the contrast factor).
-    Pixels with ``M == 0`` or non-finite / non-positive ``var_D`` carry no
-    usable variance and are dropped.
+    ``"qy-qz"`` slabs on Qx. With ``d_i = d_per_photon`` (D per detected
+    photon) each bin holds ``H = sum(D_i / d_i)`` (= detected photons) and
+    ``N = sum(1 / d_i)`` (= exposure), so ``QMap2D.mean = H / N`` is the Poisson
+    maximum-likelihood estimate of D. Zero-count pixels are kept (weighting by
+    1 / var_obs would drop them and bias low-count bins). Pixels with
+    non-finite or non-positive ``d_per_photon`` are excluded. Empty bins are NaN.
     """
+    if pixels.d_per_photon is None:
+        raise ValueError("map_reduced needs ReducedPixels.d_per_photon")
     if plane == "qx-qz":
         xs, ys, slab = pixels.Qx, pixels.Qz, pixels.Qy
         xd, yd, cut_name = "Qx", "Qz", "Qy"
@@ -59,16 +60,14 @@ def map_reduced(
         xd, yd, cut_name = "Qy", "Qz", "Qx"
     else:
         raise ValueError(f"plane must be 'qx-qz' or 'qy-qz', got {plane!r}")
-    with np.errstate(divide="ignore", invalid="ignore"):
-        var_d = pixels.var_M * (pixels.D / pixels.M) ** 2
+    dpp = pixels.d_per_photon
     ok = (
         (np.abs(slab - slab_center) <= slab_halfwidth)
-        & (pixels.M != 0)
-        & np.isfinite(var_d)
-        & (var_d > 0)
+        & np.isfinite(dpp)
+        & (dpp > 0)
         & np.isfinite(pixels.D)
     )
-    xs, ys, d, v = xs[ok], ys[ok], pixels.D[ok], var_d[ok]
+    xs, ys, d, dpp = xs[ok], ys[ok], pixels.D[ok], dpp[ok]
     if x_range is None:
         x_range = (float(xs.min()), float(xs.max())) if xs.size else (-1.0, 1.0)
     if y_range is None:
@@ -77,8 +76,8 @@ def map_reduced(
     ny = max(1, int(np.ceil((y_range[1] - y_range[0]) / bin_q[1] - 1e-9)))
     xe = np.linspace(x_range[0], x_range[1], nx + 1)
     ye = np.linspace(y_range[0], y_range[1], ny + 1)
-    H, _, _ = np.histogram2d(xs, ys, bins=[xe, ye], weights=d / v)
-    N, _, _ = np.histogram2d(xs, ys, bins=[xe, ye], weights=1.0 / v)
+    H, _, _ = np.histogram2d(xs, ys, bins=[xe, ye], weights=d / dpp)
+    N, _, _ = np.histogram2d(xs, ys, bins=[xe, ye], weights=1.0 / dpp)
     return QMap2D(
         H=H,
         N=N,

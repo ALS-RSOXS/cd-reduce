@@ -41,6 +41,7 @@ class ReducedPixels:
     omega_deg: NDArray[np.float64]
     frame_id: NDArray[np.int64]
     m_per_photon: NDArray[np.float64] | None = None
+    d_per_photon: NDArray[np.float64] | None = None
     meta: dict[str, Any] = field(default_factory=dict)
 
     def select(self, mask: NDArray[np.bool_]) -> ReducedPixels:
@@ -49,6 +50,8 @@ class ReducedPixels:
         kw = {n: getattr(self, n)[m] for n in _ARRAYS}
         if self.m_per_photon is not None:
             kw["m_per_photon"] = self.m_per_photon[m]
+        if self.d_per_photon is not None:
+            kw["d_per_photon"] = self.d_per_photon[m]
         return replace(self, **kw)
 
     @classmethod
@@ -81,6 +84,15 @@ class ReducedPixels:
                 [
                     it.m_per_photon
                     if it.m_per_photon is not None
+                    else np.full(it.M.shape, np.nan)
+                    for it in items
+                ]
+            )
+        if any(it.d_per_photon is not None for it in items):
+            kw["d_per_photon"] = np.concatenate(
+                [
+                    it.d_per_photon
+                    if it.d_per_photon is not None
                     else np.full(it.M.shape, np.nan)
                     for it in items
                 ]
@@ -198,6 +210,7 @@ def reduce_frame(
         omega_deg=np.full(n, float(om)),
         frame_id=np.full(n, frame_id, dtype=np.int64),
         m_per_photon=m_ph[valid],
+        d_per_photon=(m_ph * contrast)[valid],
         meta={
             "read_noise_photons": read_noise_photons,
             "R_B": R_B,

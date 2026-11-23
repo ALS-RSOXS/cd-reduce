@@ -11,27 +11,46 @@ from cd_reduce.reduction.roughness import (
 )
 
 
-def _px(Qx, Qy, Qz, D, var_D):
+def _px(Qx, Qy, Qz, D, dpp):
     n = len(D)
-    D = np.asarray(D, float)
-    var_D = np.asarray(var_D, float)
-    # contrast 0.5 -> M = 2 D, var_M = 4 var_D
     z = np.zeros(n)
+    D = np.asarray(D, float)
     return ReducedPixels(
         Qx=np.asarray(Qx, float), Qy=np.asarray(Qy, float), Qz=np.asarray(Qz, float),
-        f=z, D=D, M=2 * D, var_M=4 * var_D, energy_ev=z, omega_deg=z,
-        frame_id=np.zeros(n, dtype=np.int64),
+        f=z, D=D, M=D, var_M=z + 1.0, energy_ev=z, omega_deg=z,
+        frame_id=np.zeros(n, dtype=np.int64), d_per_photon=np.asarray(dpp, float),
     )  # fmt: skip
 
 
-def test_map_reduced_weighted_mean():
-    p = _px([0.1, 0.1], [0, 0], [0.2, 0.2], [1, 3], [1, 3])
+def test_map_reduced_exposure_weighting_arithmetic():
+    # photons 2 and 0 with d = 0.5 and 1.5: D = 1.0 and 0.0
+    p = _px([0.1, 0.1], [0, 0], [0.2, 0.2], [1.0, 0.0], [0.5, 1.5])
     qm = map_reduced(
         p, "qx-qz", slab_halfwidth=0.1, bin_q=(0.2, 0.4),
         x_range=(0, 0.2), y_range=(0, 0.4),
     )  # fmt: skip
-    assert qm.mean[0, 0] == pytest.approx(1.5)
+    assert qm.H[0, 0] == pytest.approx(2.0)
+    assert qm.N[0, 0] == pytest.approx(1 / 0.5 + 1 / 1.5)
+    assert qm.mean[0, 0] == pytest.approx(2.0 / (2 + 2 / 3))
     assert qm.metadata["quantity"] == "D"
+
+
+def test_map_reduced_low_count_unbiased():
+    # Uniform true D; d varies x3; ~2 photons/pixel. Inverse-variance weighting
+    # (1/var_obs, zero-count pixels dropped) is biased here and fails this test.
+    rng = np.random.default_rng(1)
+    nb, per = 2000, 40
+    D0 = 1.0
+    dpp = rng.uniform(1.0, 3.0, nb * per) * (2.0 / 2.0)
+    photons = rng.poisson(D0 / dpp)
+    D = photons * dpp
+    qx = np.repeat((np.arange(nb) + 0.5) * 1e-3, per)
+    p = _px(qx, np.zeros_like(qx), np.full_like(qx, 0.1), D, dpp)
+    qm = map_reduced(
+        p, "qx-qz", slab_halfwidth=0.1, bin_q=(1e-3, 0.2),
+        x_range=(0, nb * 1e-3), y_range=(0, 0.2),
+    )  # fmt: skip
+    assert qm.H.sum() / qm.N.sum() == pytest.approx(D0, rel=0.01)
 
 
 def test_map_reduced_slab():
@@ -62,9 +81,10 @@ def test_map_reduced_empty_bins_nan():
     assert ax.get_title()
 
 
-def test_detector_q_pitch_positive():
+def test_detector_q_pitch_small_angle():
     g = Geometry(u0_px=256, v0_px=256, Lb_px=985, Lambda_nm=80)
-    assert 0 < detector_q_pitch(g, 285.0) < 0.01
+    k = 2 * np.pi * 285.0 / 1239.84198
+    assert detector_q_pitch(g, 285.0) == pytest.approx(k / 985, rel=0.02)
 
 
 def _frames():
