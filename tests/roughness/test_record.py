@@ -70,3 +70,9 @@ def test_record_rescale_by_gamma_ratio():
     assert np.allclose(q.table.var_ler, r.table.var_ler / 16)
     assert np.allclose(q.table.cov_pw, r.table.cov_pw / 16)
     assert np.allclose(q.sigma_win["ler"], np.array(r.sigma_win["ler"]) / 2)
+
+
+def test_record_rescale_drops_model_fit():
+    r = replace(_rec(), model_fit={"model": "palasantzas", "sigma": 1.0})
+    q = r.rescale(replace(XS, dn_A=2 * XS.dn_A))
+    assert q.model_fit is None

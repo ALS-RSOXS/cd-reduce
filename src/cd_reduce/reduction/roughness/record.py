@@ -115,12 +115,13 @@ class PsdRecord:
     def rescale(
         self, new_xs: CrossSection, *, energy_ev: float | None = None
     ) -> PsdRecord:
-        """Rescale S and var by the contrast ratio ``|dn_A|^2 |Gamma|^2`` old/new.
+        """Rescale to a new cross section: S scales by the ratio, var by ratio**2.
 
-        ``Gamma`` is the unit-contrast form factor, so ``|dn_A|^2`` is included
-        in the ratio (doubling ``|dn_A|`` divides S by 4). S is multiplied by
-        the ratio, var and ``cov_pw`` by ratio**2, and ``sigma_win`` (value and
-        error) by sqrt(ratio).
+        The ratio is the contrast ``|dn_A|^2 |Gamma|^2`` old/new. ``Gamma`` is
+        the unit-contrast form factor, so ``|dn_A|^2`` is included (doubling
+        ``|dn_A|`` divides S by 4). ``cov_pw`` also scales by ratio**2 and
+        ``sigma_win`` (value and error) by sqrt(ratio). ``model_fit`` is
+        dropped (set to ``None``): it was fit to the old S.
 
         Note: exact rescaling needs the per-pixel Qz distribution. Here the
         ratio is evaluated at ``source["qz_mean"]`` (0.0 if absent), an
@@ -176,5 +177,5 @@ class PsdRecord:
         return replace(
             self, table=replace(t, **upd),
             cross_section=cross_section_dict(new_xs) if lowest else self.cross_section,
-            sigma_win=sw, source=src,
+            sigma_win=sw, source=src, model_fit=None,
         )  # fmt: skip
