@@ -80,4 +80,11 @@ def small() -> dict:
         "geometry": Geometry(
             u0_px=256, v0_px=256, Lb_px=985, beta_deg=1.0, psi_deg=0.0, Lambda_nm=80
         ),
+        # Born ensemble of explicit rough edges (Task 8)
+        "ensemble_omegas": np.linspace(-10.0, 10.0, 5),
+        "ly_nm": 1024.0,
+        "dx_nm": 1.0,
+        "dy_nm": 4.0,
+        "dz_nm": 1.0,
+        "ensemble_n_real": 2,
     }

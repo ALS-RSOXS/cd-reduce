@@ -38,8 +38,12 @@ def render_model_frame(
     max_order: int = 5,
     beamstop_radius_px: float = 30,
     rng: np.random.Generator,
+    poisson: bool = True,
 ) -> Frame:
-    """Render one noisy frame (ADU) for the given cross section and PSDs."""
+    """Render one frame (ADU) for the given cross section and PSDs.
+
+    With ``poisson=False`` the expected counts are returned without noise.
+    """
     E = xs.energy_ev
     k = 2 * np.pi * E / _HC_EV_NM
     uu, vv = frame_pixel_grid(shape)
@@ -80,7 +84,7 @@ def render_model_frame(
         lam[near] += scale * exposure_s * eta * dens * area[near]
 
     lam = np.where(np.isfinite(lam) & (lam > 0), lam, 0.0)
-    img = rng.poisson(lam).astype(float) * adu_per_photon
+    img = (rng.poisson(lam).astype(float) if poisson else lam) * adu_per_photon
     r2_bs = (uu - geometry.u0_px) ** 2 + (vv - geometry.v0_px) ** 2
     bs = r2_bs <= beamstop_radius_px**2
     img[bs] = np.nan
