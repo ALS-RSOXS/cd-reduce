@@ -1,0 +1,142 @@
+/* Interactive Ewald-sphere figure (docs/javascripts/ewald-figure.js). Theme variables only. */
+.ewald-figure {
+  margin: 1.5rem 0;
+  font-family: var(--font-sans, system-ui, sans-serif);
+  color: var(--foreground);
+}
+.ewald-figure img { max-width: 100%; height: auto; }
+
+.ewald-figure--live {
+  border: 1px solid var(--border);
+  border-radius: var(--radius, 0.6rem);
+  background: var(--card, var(--background));
+  padding: 0.9rem;
+}
+
+.ewald-figure__panels {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  align-items: start;
+  gap: 0.9rem;
+}
+@media (max-width: 720px) {
+  .ewald-figure__panels { grid-template-columns: 1fr; }
+}
+
+.ewald-figure .ewald-figure__panel { margin: 0 !important; padding: 0; min-width: 0; }
+.ewald-figure__panel canvas {
+  display: block;
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: calc(var(--radius, 0.6rem) - 0.2rem);
+  touch-action: none;
+}
+.ewald-figure__panel canvas:first-of-type { cursor: grab; }
+.ewald-figure__panel canvas:active { cursor: grabbing; }
+.ewald-figure__title {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 0.8rem;
+  font-weight: 600;
+  margin: 0 0 0.35rem;
+}
+.ewald-figure__panel figcaption,
+.ewald-figure__muted {
+  color: var(--muted-foreground);
+  font-size: 0.75rem;
+}
+.ewald-figure__panel figcaption { margin-top: 0.3rem; }
+
+.ewald-figure__controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem 1.4rem;
+  margin-top: 0.8rem;
+  font-size: 0.85rem;
+}
+.ewald-figure__control {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.ewald-figure__control input[type="range"] {
+  width: 10rem;
+  accent-color: var(--primary, #2563eb);
+}
+.ewald-figure__control output {
+  min-width: 4.2rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted-foreground);
+}
+.ewald-figure__control--num input {
+  width: 4.5rem;
+  padding: 0.15rem 0.35rem;
+  border: 1px solid var(--input, var(--border));
+  border-radius: 0.35rem;
+  background: var(--background);
+  color: var(--foreground);
+  font: inherit;
+}
+.ewald-figure__buttons { display: inline-flex; gap: 0.5rem; margin-left: auto; }
+.ewald-figure__btn {
+  padding: 0.25rem 0.8rem;
+  border: 1px solid var(--border);
+  border-radius: 0.4rem;
+  background: var(--secondary, transparent);
+  color: var(--secondary-foreground, var(--foreground));
+  font: inherit;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+.ewald-figure__btn:hover { border-color: var(--ring, var(--primary)); }
+.ewald-figure__btn:focus-visible,
+.ewald-figure__control input:focus-visible {
+  outline: 2px solid var(--ring, #60a5fa);
+  outline-offset: 2px;
+}
+
+.ewald-figure__readout {
+  margin-top: 0.7rem;
+  font-size: 0.78rem;
+  line-height: 1.5;
+  font-variant-numeric: tabular-nums;
+}
+.ewald-figure__orders { color: var(--foreground); }
+.ewald-figure__badge {
+  margin-top: 0.4rem;
+  font-size: 0.72rem;
+  color: var(--muted-foreground);
+}
+.ewald-figure__badge.is-bad { color: var(--destructive, #dc2626); }
+
+.ewald-figure table.ewald-figure__table {
+  display: table;
+  margin: 0.35rem 0 0.15rem !important;
+  border-collapse: collapse;
+  border: 0 !important;
+  font-size: 0.74rem;
+  width: auto;
+  background: transparent !important;
+}
+.ewald-figure table.ewald-figure__table thead,
+.ewald-figure table.ewald-figure__table tr,
+.ewald-figure table.ewald-figure__table th,
+.ewald-figure table.ewald-figure__table td {
+  background: transparent !important;
+}
+.ewald-figure table.ewald-figure__table th,
+.ewald-figure table.ewald-figure__table td {
+  padding: 0.1rem 0.5rem !important;
+  border: 0 !important;
+  border-bottom: 1px solid var(--border) !important;
+  text-align: right;
+  white-space: nowrap;
+  font-weight: 500;
+}
+.ewald-figure table.ewald-figure__table th:first-child {
+  text-align: left;
+  color: var(--muted-foreground);
+}
+@media (max-width: 720px) { .ewald-figure__readout { overflow-x: auto; } }
