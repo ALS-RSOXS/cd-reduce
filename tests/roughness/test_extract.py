@@ -385,3 +385,32 @@ def test_isolation_rows_and_quick_ler_qx_max_cut():
     assert np.allclose(S, want, rtol=0.02)
     S0, _ = quick_ler(px, W, edges)
     assert not np.allclose(S0, want, rtol=0.05)
+
+
+def test_cross_term_recovered_all_quadrants():
+    # The cross term 2 sin(Qx w) Im S_PW(f) is odd in Qx and in f; pixels in
+    # all four (Qx, f) quadrants must not cancel it.
+    edges = np.geomspace(F_LO, F_HI, 6)
+    rng = np.random.default_rng(26)
+    n = 20000
+    qx = rng.uniform(0.02, 0.37, n) * rng.choice([-1, 1], n)
+    f = np.exp(rng.uniform(np.log(F_LO), np.log(F_HI), n)) * rng.choice([-1, 1], n)
+    i = np.clip(np.searchsorted(edges, np.abs(f)) - 1, 0, 4)
+    fc = np.sqrt(edges[i] * edges[i + 1])
+    a = np.abs(qx)
+
+    def S_X(g):
+        return 0.6 * S_P(g)
+
+    M = (
+        4 * np.sin(a * W / 2) ** 2 * S_P(fc)
+        + np.cos(a * W / 2) ** 2 * S_W(fc)
+        + 2 * np.sin(qx * W) * np.sign(f) * S_X(fc)
+    )
+    t = fit_psds(
+        make(qx, f, M, (1e-6 * np.abs(M) + 1e-9) ** 2), W, edges, cross_term=True
+    )
+    c = np.sqrt(edges[:-1] * edges[1:])
+    assert np.allclose(t.S_cross / S_X(c), 1, atol=1e-3)
+    assert np.allclose(t.S_lpr / S_P(c), 1, atol=1e-3)
+    assert np.allclose(t.S_lwr / S_W(c), 1, atol=1e-3)

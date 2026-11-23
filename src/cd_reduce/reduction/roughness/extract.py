@@ -105,6 +105,12 @@ def fit_psds(
 
     Covariance is inv(N) * max(1, chi2_red); estimates are never clipped.
 
+    The two-mode columns ``4 sin^2(Qx w/2)`` and ``cos^2(Qx w/2)`` are even and
+    use ``|Qx|`` and ``|f|``. With ``cross_term=True`` the third column is
+    ``2 sin(Qx w) sign(f)`` with signed ``Qx`` and signed ``f``: the cross term
+    ``2 sin(Qx w) Im S_PW(f)`` is odd in both, so folding them would cancel it
+    across the four quadrants. ``S_cross`` is ``Im S_PW`` at ``f > 0``.
+
     ``qx_max`` (nm^-1), if given, keeps only pixels with ``|Qx| <= qx_max``. The
     first-order edge model behind ``M`` is valid for ``|Qx| sigma_LER <~ 0.3``
     (HOWTO pitfalls); the reduction leaves the choice of cut to the caller.
@@ -138,7 +144,8 @@ def fit_psds(
         mp = m_pp[sel]
         cols = [4 * np.sin(x * w / 2) ** 2, np.cos(x * w / 2) ** 2]
         if cross_term:
-            cols.append(2 * np.sin(x * w))
+            # odd in Qx and in f: use the signed values so quadrants add up
+            cols.append(2 * np.sin(pixels.Qx[sel] * w) * np.sign(pixels.f[sel]))
         A = np.stack(cols, axis=1)
         v_fix = v
         beta = None

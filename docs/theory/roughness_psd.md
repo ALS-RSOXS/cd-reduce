@@ -122,7 +122,7 @@ $$
 |A|^2 \propto |\Gamma|^2 e^{-Q_x^2 s^2}\left[\,4\sin^2\varphi\,S_{\mathrm{LPR}} + \cos^2\varphi\,S_{\mathrm{LWR}} + 2\sin(Q_x w)\,\operatorname{Im}S_{PW}\right]
 $$
 
-The cross term vanishes for any real, even $P$–$W$ cross-correlation. It also vanishes at every isolation row $Q_x w = k\pi$, whatever the correlation. `fit_psds` drops it by default. With `cross_term=True`, it carries $\operatorname{Im}S_{PW}$ as a third unknown.
+The cross term vanishes for any real, even $P$–$W$ cross-correlation. It also vanishes at every isolation row $Q_x w = k\pi$, whatever the correlation. `fit_psds` drops it by default. With `cross_term=True`, it carries $\operatorname{Im}S_{PW}$ as a third unknown. That column uses the signed $Q_x$ and the sign of $f$, because the term is odd in both; folding them as the two-mode columns do would cancel it.
 
 **LER, LPR and LWR.** The edge PSDs are $S_{u_L} = S_{\mathrm{LPR}} + S_{\mathrm{LWR}}/4 - \operatorname{Re}S_{PW}$ and $S_{u_R} = S_{\mathrm{LPR}} + S_{\mathrm{LWR}}/4 + \operatorname{Re}S_{PW}$. Their mean, the line-edge roughness, needs no assumption about the $P$–$W$ correlation:
 
