@@ -50,6 +50,13 @@ def developed(E: float) -> DevelopedLine:
     return DevelopedLine(80.0, 45.0, 2.5, 25.0, _DN_A[E], energy_ev=E)
 
 
+def tapered(E: float):
+    """Tapered developed line: 85 deg sidewall, h 25 nm, mean width 45 nm."""
+    from .forward.tapered import tapered_from_sidewall
+
+    return tapered_from_sidewall(80.0, 45.0, 2.5, 25.0, _DN_A[E], energy_ev=E)
+
+
 def sigma_ler_full(psd_lpr, psd_lwr) -> float:
     """Debye-Waller edge rms: sqrt(sigma_LPR^2 + sigma_LWR^2 / 4)."""
     s2 = 0.0
@@ -68,6 +75,7 @@ CASES: dict[str, dict] = {
     "lpr_developed": {"xs": developed, "psd_lpr": PSD_LPR, "psd_lwr": None},
     "lwr_developed": {"xs": developed, "psd_lpr": None, "psd_lwr": PSD_LWR},
     "both_developed": {"xs": developed, "psd_lpr": PSD_LPR, "psd_lwr": PSD_LWR},
+    "tapered": {"xs": tapered, "psd_lpr": PSD_LPR, "psd_lwr": PSD_LWR},
 }
 
 
