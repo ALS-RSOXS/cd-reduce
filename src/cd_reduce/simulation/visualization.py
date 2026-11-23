@@ -24,7 +24,6 @@ if TYPE_CHECKING:
     )
 
 
-
 def _cell_edge_extent(
     a: np.ndarray, b: np.ndarray
 ) -> tuple[float, float, float, float]:
@@ -178,6 +177,185 @@ def plot_structure_3d(
         add_panel_label(axes_arr[0], panel_labels[0])
         add_panel_label(axes_arr[1], panel_labels[1])
     return axes_arr
+
+
+def plot_structure_3d_surface(
+    structure: RefractiveIndexMap3D,
+    *,
+    component: str = "delta",
+    ax: Any = None,
+    cmap: Any = None,
+    color: str | None = None,
+    x_range: tuple[float, float] | None = None,
+    y_range: tuple[float, float] | None = None,
+    y_cut: float | None = None,
+    relief_scale: float = 1.0,
+    stride: int = 1,
+    threshold: float = 0.05,
+    substrate_color: str = "#3a3f47",
+    dark: bool = True,
+    elev: float = 32.0,
+    azim: float = -62.0,
+) -> Any:
+    """Render a 3D refractive-index map as a shaded perspective view.
+
+    The film's top surface ``T(x, y)`` is drawn as a relief, coloured by
+    ``component`` (``"delta"`` or ``"beta"``) in the top filled cell. The front
+    face at ``y = y_cut`` (default: the lowest ``y`` shown) shows the profile
+    into depth. Uncovered regions are drawn as substrate.
+
+    Parameters
+    ----------
+    structure : RefractiveIndexMap3D
+        Map to render, e.g. from :func:`build_rough_grating_3d`.
+    component : {"delta", "beta"}
+        Optical constant used for the colours.
+    color : str, optional
+        One solid colour for all material (e.g. a uniform developed line)
+        instead of colouring by ``component``.
+    ax : mpl_toolkits.mplot3d.Axes3D, optional
+        Axes created with ``projection="3d"``; a new figure is made if omitted.
+    x_range, y_range : tuple of float, optional
+        Region to draw in nm (defaults: the whole map).
+    y_cut : float, optional
+        ``y`` of the front cut face in nm.
+    relief_scale : float
+        Exaggeration of the surface relief above the lowest film top (heights
+        below it are drawn to scale; 1 = true scale everywhere).
+    stride : int
+        Draw every ``stride``-th cell in ``x`` and ``y`` (speed).
+    threshold : float
+        Cells with ``|delta| + |beta|`` above ``threshold`` times the maximum
+        count as filled.
+    dark : bool
+        Dark background styling.
+
+    Returns
+    -------
+    Axes3D
+        The axes; ``ax.surface_norm`` holds the colour normalisation.
+    """
+    import matplotlib.pyplot as plt
+    from matplotlib import colors as mcolors
+    from scipy.ndimage import gaussian_filter
+
+    arr = np.asarray(structure.delta if component == "delta" else structure.beta)
+    mag = np.abs(structure.delta) + np.abs(structure.beta)
+    x, y, z = structure.x_nm, structure.y_nm, structure.z_nm
+    dz = float(z[1] - z[0]) if z.size > 1 else 1.0
+    xs = (x >= x_range[0]) & (x <= x_range[1]) if x_range else np.ones(x.size, bool)
+    ys = (y >= y_range[0]) & (y <= y_range[1]) if y_range else np.ones(y.size, bool)
+    ix = np.flatnonzero(xs)[:: max(int(stride), 1)]
+    iy = np.flatnonzero(ys)[:: max(int(stride), 1)]
+    a = arr[np.ix_(ix, iy)]
+    m = mag[np.ix_(ix, iy)]
+    filled = m > threshold * float(np.max(mag))
+    any_fill = filled.any(axis=2)
+    k_top = np.where(any_fill, z.size - 1 - np.argmax(filled[:, :, ::-1], axis=2), 0)
+    ii, jj = np.indices(k_top.shape)
+    below = np.clip(k_top - 1, 0, None)
+    ref = np.maximum(m[ii, jj, below], m[ii, jj, k_top])
+    frac = np.clip(m[ii, jj, k_top] / np.where(ref > 0, ref, 1.0), 0.0, 1.0)
+    height = np.where(any_fill, (z[k_top] - 0.5 * dz) + frac * dz, 0.0)
+    col = np.where(any_fill, a[ii, jj, below], np.nan)
+
+    tops = height[any_fill]
+    base = float(tops.min()) if tops.size else 0.0
+
+    def lift(zz: np.ndarray) -> np.ndarray:
+        return np.where(zz > base, base + (zz - base) * relief_scale, zz)
+
+    vals = col[np.isfinite(col)]  # full cells below the surface (no partial fill)
+    lo, hi = float(np.percentile(vals, 1.0)), float(np.percentile(vals, 99.0))
+    if hi - lo <= 1e-6 * max(abs(hi), 1e-30):  # uniform material: low end of the map
+        lo, hi = lo, lo + max(abs(lo), 1e-30)
+    norm = mcolors.Normalize(vmin=lo, vmax=hi)
+    cm = (
+        mcolors.LinearSegmentedColormap.from_list(
+            "film", ["#4a6fb5", "#8a5bb0", "#e0706a", "#f39150"]
+        )
+        if cmap is None
+        else plt.get_cmap(cmap)
+    )
+    sub = np.array(mcolors.to_rgba(substrate_color))
+
+    def rgba(values: np.ndarray) -> np.ndarray:
+        if color is not None:
+            out = np.broadcast_to(mcolors.to_rgba(color), (*values.shape, 4)).copy()
+        else:
+            out = cm(norm(np.nan_to_num(values, nan=norm.vmin)))
+        out[np.isnan(values)] = sub
+        return out
+
+    ls = mcolors.LightSource(azdeg=315, altdeg=45)
+    top = rgba(col)
+    top[..., :3] = ls.shade_rgb(  # normals from a lightly smoothed relief
+        top[..., :3], gaussian_filter(lift(height), 1.0), fraction=0.35
+    )
+
+    if ax is None:
+        fig = plt.figure(figsize=(8, 6))
+        ax = fig.add_subplot(projection="3d")
+    X, Y = np.meshgrid(x[ix], y[iy], indexing="ij")
+    ax.plot_surface(
+        X,
+        Y,
+        lift(height),
+        facecolors=top,
+        rstride=1,
+        cstride=1,
+        linewidth=0,
+        antialiased=False,
+        shade=False,
+    )
+
+    # front x-z cut face
+    jc = 0 if y_cut is None else int(np.argmin(np.abs(y[iy] - y_cut)))
+    zf = np.concatenate([[0.0], z + 0.5 * dz])
+    Zf = np.minimum(zf[None, :], height[:, jc][:, None])
+    Xf = np.repeat(x[ix][:, None], zf.size, axis=1)
+    Yf = np.full_like(Xf, y[iy][jc])
+    face_vals = np.where(filled[:, jc, :], a[:, jc, :], np.nan)
+    face_vals = np.concatenate([face_vals[:, :1], face_vals], axis=1)
+    ax.plot_surface(
+        Xf,
+        Yf,
+        lift(Zf),
+        facecolors=rgba(face_vals),
+        rstride=1,
+        cstride=1,
+        linewidth=0,
+        antialiased=False,
+        shade=False,
+    )
+    ax.plot(
+        x[ix],
+        np.full(ix.size, y[iy][jc]),
+        lift(height[:, jc]),
+        color="white" if dark else "black",
+        lw=1.0,
+    )
+
+    zmax = float(np.max(lift(height)))
+    ax.set_box_aspect((np.ptp(x[ix]), np.ptp(y[iy]), max(zmax, 1e-6)), zoom=1.1)
+    ax.set_zticks([0.0, round(zmax)])
+    if relief_scale != 1:
+        ax.set_zticklabels(["0", f"{base + (zmax - base) / relief_scale:.0f}"])
+    ax.view_init(elev=elev, azim=azim)
+    ax.set_xlabel(r"$x$ (nm)")
+    ax.set_ylabel(r"$y$ (nm)")
+    ax.set_zlabel(r"$z$ (nm)")
+    if dark:
+        ax.set_facecolor("#06121a")
+        ax.figure.set_facecolor("#06121a")
+        for axis in (ax.xaxis, ax.yaxis, ax.zaxis):
+            axis.set_pane_color((0, 0, 0, 0))
+            axis.label.set_color("#d4d4d8")
+            axis.line.set_color("#52525b")
+        ax.tick_params(colors="#a1a1aa", labelsize=7)
+        ax.grid(False)
+    ax.surface_norm = norm
+    return ax
 
 
 def plot_multislice_wavefield(

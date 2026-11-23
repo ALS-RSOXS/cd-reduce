@@ -2,17 +2,23 @@
 
 [`RefractiveIndexMap3D`](../../api/python/simulation.md#cd_reduce.simulation.structures.RefractiveIndexMap3D) extends the optical-constant map to 3D $(x, y, z)$, with $x$ across the lines, $y$ along them and $z$ through the film. Any 2D cross section can be extruded into 3D and given rough edges, then simulated with the Born or the multislice engine.
 
-The figure shows three gratings built from the same cross-section objects the roughness reduction uses:
+Three gratings built from the same cross-section objects the roughness reduction uses:
 
-- **a–c, clean developed line** (`DevelopedLine`, no roughness). The scattering is only the Bragg orders at $Q_y = 0$.
-- **d–f, rough developed line.** The same line with independent placement (LPR) and width (LWR) roughness on every line. The orders lose intensity and the lost power appears as diffuse streaks along $Q_y$.
-- **g–i, rough latent image** (`LatentFilm`). An undeveloped resist film: exposure decays from the top (chemical contrast, g) and the exposed regions shrink, leaving a shallow relief. The contrast is far weaker than for the developed line, so the scattering is several decades fainter (i).
+- **Clean developed line** (`DevelopedLine`, no roughness): resist lines on the substrate.
+- **Rough developed line**: the same line with independent placement (LPR) and width (LWR) roughness on every line.
+- **Rough latent image** (`LatentFilm`): an undeveloped film. Unexposed resist (blue) and exposed resist (orange) differ in optical constants; the exposed regions shrink, leaving a shallow relief, and the front cut shows the exposure fading with depth.
 
-Columns are the $(x, z)$ cross-section, the $(x, y)$ top view at mid-height, and the Born-ensemble intensity on the $(Q_x, Q_y)$ mode grid at $\omega = 0$ (log scale, zero order removed).
+![3D renders of a clean developed line, a rough developed line and a rough latent image](../../assets/images/sim_3d_structures.png)
 
-![Clean developed line, rough developed line and rough latent image: cross-sections, top views and Born-ensemble scattering in (Qx, Qy)](../../assets/images/sim_3d_gratings.png)
+The renders come from `plot_structure_3d_surface`, which draws any `RefractiveIndexMap3D`: the film's top surface as a shaded relief and the front $x$–$z$ cut into depth. For visibility the roughness is drawn 2.3× and the latent relief 3× (`relief_scale`); the simulations below use the true values.
 
-The figure is produced by `examples/simulation_3d_gratings.py`. The core of it:
+Their Born-ensemble intensity on the $(Q_x, Q_y)$ mode grid at $\omega = 0$ (8 realisations, log scale, zero order removed):
+
+![Born-ensemble (Qx, Qy) intensity: Bragg spots only for the clean line, diffuse streaks for the rough line and the latent image](../../assets/images/sim_3d_scattering.png)
+
+The clean line scatters only into the Bragg orders at $Q_y = 0$. Roughness takes intensity from the orders and spreads it into diffuse streaks along $Q_y$. The latent image's contrast is far weaker than the developed line's, so its scattering is several decades fainter.
+
+Both figures are produced by `examples/simulation_3d_gratings.py`. The core of it:
 
 ```python
 from functools import partial
@@ -48,6 +54,10 @@ latent_res = cdr.simulate_rough_ensemble(maker(latent, True), [0.0], n_realisati
 
 # Detector-comparable intensity per mode: Bragg orders + diffuse
 intensity = np.abs(rough.coherent[0]) ** 2 * rough.flux_factor[0] + rough.diffuse_flux[0]
+
+# 3D render of one realisation (relief exaggerated 3x for display)
+struct = maker(latent, True)(np.random.default_rng(3))
+cdr.plot_structure_3d_surface(struct, relief_scale=3.0)
 ```
 
 Pass `engine="multislice"` to `simulate_rough_ensemble` to run the same structures through the multislice propagator instead (see [Ensembles of rough gratings](#ensembles-of-rough-gratings)).

@@ -258,3 +258,32 @@ def test_visualization_helpers() -> None:
     assert fig_tr is not None
     assert ax_tr is not None
     plt.close("all")
+
+
+def test_plot_structure_3d_surface_renders_relief_and_face() -> None:
+    import matplotlib.pyplot as plt
+
+    from cd_reduce import LatentFilm, build_rough_grating_3d, plot_structure_3d_surface
+
+    lat = LatentFilm(
+        L=80.0,
+        w=45.0,
+        s=2.5,
+        h=40.0,
+        dh=4.0,
+        lam=25.0,
+        r=1.15 + 0.05j,
+        dn_A=-2e-3 + 1.5e-3j,
+        energy_ev=285.0,
+    )
+    st = build_rough_grating_3d(
+        lat, n_lines=2, ly_nm=64.0, dx_nm=2.0, dy_nm=4.0, dz_nm=2.0
+    )
+    fig = plt.figure()
+    ax = plot_structure_3d_surface(
+        st, ax=fig.add_subplot(projection="3d"), relief_scale=3.0
+    )
+    assert len(ax.collections) == 2  # top relief + front cut face
+    assert ax.surface_norm.vmax > ax.surface_norm.vmin
+    plot_structure_3d_surface(st, ax=fig.add_subplot(projection="3d"), color="#4a6fb5")
+    plt.close(fig)

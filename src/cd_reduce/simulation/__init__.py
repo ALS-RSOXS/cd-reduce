@@ -31,6 +31,7 @@ from cd_reduce.simulation.visualization import (
     plot_simulation_comparison,
     plot_structure_2d,
     plot_structure_3d,
+    plot_structure_3d_surface,
 )
 
 __all__ = [
@@ -51,6 +52,7 @@ __all__ = [
     "plot_simulation_comparison",
     "plot_structure_2d",
     "plot_structure_3d",
+    "plot_structure_3d_surface",
     "simulate_born_2d",
     "simulate_born_3d",
     "simulate_multislice_2d",
