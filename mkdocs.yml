@@ -76,7 +76,7 @@ nav:
       - Reciprocal-space mapping:
           - Overview: guides/mapping/index.md
           - 2D domains and Ewald geometry: guides/mapping/domains_2d.md
-          - Slicing, 1D traces, and LER PSD: guides/mapping/slicing_and_1d.md
+          - Slicing and 1D traces: guides/mapping/slicing_and_1d.md
           - LER / LWR / LPR PSDs: guides/mapping/roughness_psd.md
       - Building and simulating structures:
           - Overview: guides/simulation/index.md
@@ -88,6 +88,7 @@ nav:
       - Pipeline at a glance: theory/pipeline.md
       - Ewald sphere and geometry: theory/geometry_and_ewald.md
       - Born approximation and roughness PSD: theory/born_and_roughness.md
+      - Roughness PSDs from diffuse scattering: theory/roughness_psd.md
       - Split-step Fourier multislice: theory/multislice.md
   - API Reference:
       - Overview: api/index.md

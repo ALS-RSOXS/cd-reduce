@@ -11,7 +11,8 @@ In transmission geometry (panel **a**), rotating a periodic line grating of pitc
 | Page | What it covers |
 | --- | --- |
 | [2D domains and Ewald geometry](domains_2d.md) | Detector-strip to $(Q_x, Q_z)$ butterfly mapping, multi-stage $\times$ multi-energy maps, exact Ewald (`"correct"`) vs. flat-detector (`"small_angle"`) projections, radial (`Qr`, `signed_Qr`) maps, and fixed-$Q$/fixed-$\omega$ slices |
-| [Slicing, 1D traces, and LER PSD](slicing_and_1d.md) | Specular $I$ vs. $Q_x$ per $\omega$ (`extract_qx_by_omega`), specular $I$ vs. $Q_z$ per order (`extract_order_rods_qz`), directional off-specular cuts (`extract_diffuse_cut` along `Qy`, `Qz`, `Qx`), 2D off-specular sheets (`extract_offspec_rod_map`), and Born LER $\mathrm{PSD}(Q_y)$ read-off |
+| [Slicing and 1D traces](slicing_and_1d.md) | Specular $I$ vs. $Q_x$ per $\omega$ (`extract_qx_by_omega`), specular $I$ vs. $Q_z$ per order (`extract_order_rods_qz`), and arbitrary 1D cuts (`to_trace_1d`, `QMap2D.slice_1d`) |
+| [LER / LWR / LPR PSDs](roughness_psd.md) | Roughness PSDs from the off-specular diffuse: `reduce_frame`, `fit_psds`, isolation rows, `PsdRecord`, and reduced $Q_x$–$Q_z$ / $Q_y$–$Q_z$ maps (`map_reduced`) |
 
 ## Supported Coordinate Domains
 

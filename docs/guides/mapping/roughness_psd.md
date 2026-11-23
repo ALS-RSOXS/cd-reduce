@@ -1,76 +1,140 @@
 # LER, LWR and LPR PSDs from diffuse scattering
 
-`cd_reduce.reduction.roughness` turns the off-specular diffuse wings around each Bragg order into the line-placement (LPR), line-width (LWR) and line-edge (LER) power spectral densities.
+`cd_reduce.reduction.roughness` turns the off-specular diffuse of a rotation series into two-sided line-placement (LPR), line-width (LWR) and line-edge (LER) PSDs. PSDs are in $\mathrm{nm^3}$, as functions of $f = Q_y/2\pi$ in $\mathrm{nm^{-1}}$, with $\sigma^2 = \int S\,\mathrm df$ over both signs of $f$. The model and its limits are in [Roughness PSDs from diffuse scattering](../../theory/roughness_psd.md).
 
-## Physics
+The workflow:
 
-A line of width $w$ has the form factor $F(q_x) = 2\sin(q_x w/2)/q_x$. Edge displacements $\delta_L(y)$, $\delta_R(y)$ change it by
+1. calibrated frames
+2. absolute scale from the Bragg orders (`order_scale`)
+3. per-pixel reduced intensity $M$ (`reduce_frame`)
+4. global two-mode fit per $f$ bin (`fit_psds`)
+5. isolation-row check (`purity_bands`, `isolation_row_psds`)
+6. stored record (`PsdRecord.save`)
+7. reduced maps (`map_reduced`, `plot_reduced_map`)
 
-$$\delta F = -2i\sin(q_x w/2)\,P + \cos(q_x w/2)\,W,\qquad P = \tfrac{1}{2}(\delta_L+\delta_R),\; W = \delta_R-\delta_L .$$
+The figures below come from `examples/roughness_psd_howto.py`. It renders synthetic frames from known PSDs and runs steps 2 to 6 with a known scale.
 
-For roughness uncorrelated from line to line (first-order Born, conformal in $z$), the diffuse intensity per unit $Q_xQ_y$ area divided by the integrated order is
+## What you need
 
-$$R_m(Q_y) = \frac{dI/d^2Q}{I_{\rm ref}} = \frac{p}{(2\pi)^2 F_{\rm ref}^2}\Big[4\sin^2\!\tfrac{mGw}{2}\,S_{\rm LPR}(Q_y) + \cos^2\!\tfrac{mGw}{2}\,S_{\rm LWR}(Q_y)\Big].$$
-
-Contrast, height and the $Q_z$ form factor cancel. Each order weights $S_{\rm LPR}$ and $S_{\rm LWR}$ differently, so `decompose_edge_psd` solves a weighted non-negative least-squares fit across orders for every $Q_y$ bin. With equal left and right edge statistics, $S_{\rm LER} = S_{\rm LPR} + S_{\rm LWR}/4$ and the edge correlation is $\rho = (S_{\rm LPR} - S_{\rm LWR}/4)/S_{\rm LER}$. PSDs are two-sided, with $\sigma^2 = \frac{1}{\pi}\int_0^\infty S\,dQ_y$.
-
-Limits:
-
-- **50 % duty cycle.** Odd orders are blind to LWR and even orders are extinct, so the split is ill-conditioned. Check the `condition` column. If fewer than two usable orders remain in a bin, the code falls back to a single-edge LER with $\rho = 0$ (`decomposed=False`).
-- **Line-to-line correlation.** The `flank_ratio` column measures the level between orders. Excess intensity localised on the rod above it means the roughness is correlated from line to line; `use="wing_minus_flank"` isolates that part.
-
-## Choosing where I(Qy) is read
-
-| `mode` | What contributes | Use |
-|---|---|---|
-| `"line_cut"` | Detector line cut through each order in the frame at `omega`. $Q_z$ follows that frame's Ewald trace. | Standard read-off, e.g. at $\omega = 0$ |
-| `"qz_trace"` | Pixels with $Q_z$ in `qz_range` from every frame, each normalised by the order rod $I_m(Q_z)$ interpolated at the pixel's own $Q_z$ | PSD at a chosen height frequency; checks whether roughness is conformal through the height |
-
-Two corrections are on by default:
-
-- **Core background.** The integrated core has the local diffuse level, measured in a ring around it, subtracted. This matters for weak orders near extinction.
-- **Ewald correction** (`ewald_correction=True`). Wing pixels at large $|Q_y|$ sit at $\Delta Q_z \approx -Q_y^2/2k$ below their core. When `source` is a tilt series, the measured rods correct for this. A single frame cannot be corrected, and `metadata["ewald_correction"]` is then `False`.
-
-![I(Qy) read as a line cut and along a Qz trace](../../assets/images/diffuse_qy_modes.png)
-
-## Usage
+- **Calibrated frames and geometry.** Set up a `CdRsoxsLoader` as in [Data reduction](../reduction/index.md). Every pixel is mapped to the sample frame by `compute_pixel_q`.
+- **A cross section per energy.** This is a `LatentFilm` or `DevelopedLine` from a prior fit of the specular and order intensities. It supplies $L$, $w$, $s$, $\Delta n_A$ and the edge contrast $|\Gamma(Q_z)|^2$. The PSDs scale as $1/|\Delta n_A\Gamma|^2$, so this is the largest systematic.
+- **Detector gain** (`adu_per_photon`) and, if relevant, the upstream window transmission (`window_T`) and read noise (`read_noise_photons`).
 
 ```python
+import numpy as np
 import cd_reduce as cdr
 
+xs_by_energy = {
+    285.0: cdr.LatentFilm(
+        L=80.0, w=45.0, s=2.5, h=40.0, dh=4.0, lam=25.0,
+        r=1.15 + 0.05j, dn_A=-2e-3 + 1.5e-3j, energy_ev=285.0,
+    ),
+}
 loader = cdr.CdRsoxsLoader("fits_dir", geometry="geometry.json", bg_mode="photon_events")
-ratio = loader.extract_diffuse_ratio(mode="line_cut", omega=0.0,
-                                     qy_edges=np.geomspace(0.015, 0.2, 13))
-res = cdr.decompose_edge_psd(ratio, line_width_nm=32.0)
-fits = {k: res.fit(k, model="mack") for k in ("LER", "LWR", "LPR")}
-sigma_ler, dsigma = res.sigma("LER")      # band-limited RMS over the measured Qy
-cdr.plot_edge_psds(res, fits=fits)
-
-# along a constant-Qz trace instead
-ratio_qz = loader.extract_diffuse_ratio(mode="qz_trace", qz_range=(0.03, 0.06))
 ```
 
-PSD models in `PSD_MODELS`: `mack` (Palasantzas/Mack), `mack_floor`, `power_law`, and `spectral_peak` (Mack plus a Gaussian peak). The line width can be estimated from $Q_z \approx 0$ order ratios with `estimate_line_width`.
+## 1. Absolute scale from the Bragg orders
 
-![Recovered LPR / LWR / LER PSDs on a synthetic series against the input PSDs](../../assets/images/edge_psds_lpr_lwr.png)
+The integrated order intensities fix the incident photon rate per energy, and give an independent full $\sigma_{\mathrm{LER}}$ through the Debye–Waller factor:
+
+```python
+orders = loader.build_order_table()
+fit = cdr.order_scale(orders, xs_by_energy, adu_per_photon=27.0)
+fit.scale_by_energy, fit.scale_err, fit.sigma_ler
+sigma_dw, sigma_dw_err = cdr.debye_waller_sigma(orders, xs_by_energy, adu_per_photon=27.0)
+```
+
+If the incident rate is known, pass it as a float instead.
+
+## 2. Reduce every frame to M
+
+`reduce_frame` maps every pixel to $(Q_x, Q_y, Q_z)$ and divides out everything except the PSDs: the Born prefactor, solid angle, film absorption, window, $|\Gamma(Q_z)|^2$ and edge blur. What is left is
+
+$$
+M = 4\sin^2\!\tfrac{Q_x w}{2}\,S_{\mathrm{LPR}}(f) + \cos^2\!\tfrac{Q_x w}{2}\,S_{\mathrm{LWR}}(f) .
+$$
+
+It also drops pixels in the Bragg discs (`R_B`), behind the beamstop, where the contrast is below `keep` times its maximum, and near the zeros of $\Gamma$:
+
+```python
+frames_e = [fr for fr in loader.frames if np.isclose(fr.energy_ev, 285.0)]
+pixels = cdr.ReducedPixels.concat([
+    cdr.reduce_frame(
+        fr, loader.geometry, xs_by_energy[285.0],
+        scale=fit.scale_by_energy[285.0], adu_per_photon=27.0,
+        R_B=0.008, keep=0.1, frame_id=i,
+    )
+    for i, fr in enumerate(frames_e)
+])
+```
+
+`loader.reduce_roughness(xs_by_energy)` does this for every frame and energy, with `scale="bragg_orders"` by default.
+
+![A synthetic frame and its reduced M with the Bragg, beamstop and contrast masks applied](../../assets/images/roughness/howto_frame_and_M.png)
+
+If the cross section is right, $M$ does not depend on $\omega$ or $Q_z$. Compare fits of single $\omega$ groups (`pixels.select(...)`) before trusting the result.
+
+## 3. Fit both PSDs per f bin
+
+`fit_psds` solves a weighted two-mode least-squares problem in each $|f|$ bin, over every usable pixel. It takes model-based Poisson variances and iterates (IRLS). Per-pixel weights from the observed counts would bias the PSDs low at low counts.
+
+Set `qx_max` to keep the fit inside the first-order range, $|Q_x|\sigma_{\mathrm{LER}} \lesssim 0.3$. The Debye–Waller $\sigma$ from step 1 is a good estimate of $\sigma_{\mathrm{LER}}$.
+
+```python
+qx_max = 0.3 / sigma_dw
+table = cdr.fit_psds(pixels, w=45.0, qx_max=qx_max)   # PsdTable
+table.S_lpr, table.S_lwr, table.S_ler, table.var_lpr, table.cond, table.chi2_red
+```
+
+![M against Qx in one f bin with the global fit; isolation rows at k pi / w and the first-order cut](../../assets/images/roughness/howto_M_vs_qx.png)
+
+Check `cond`. Pixels that cover both kinds of null separate the modes; pixels only near the orders do not. With `cross_term=True` the fit also carries $\operatorname{Im}S_{PW}$. `quick_ler(pixels, w, f_edges)` gives $S_{\mathrm{LER}}$ with no fit at all, as the mean of $M$ over whole periods of $Q_x w$.
+
+## 4. Check with the isolation rows
+
+At $Q_x = k\pi/w$ one weight vanishes. Odd $k$ rows hold $4S_{\mathrm{LPR}}$ alone and even $k$ rows $S_{\mathrm{LWR}}$ alone. `purity_bands` finds the $Q_x$ bands where the target mode carries at least a fraction `p` of $M$ over the whole window, given a prior. `isolation_row_psds` estimates each PSD from those bands alone:
+
+```python
+fc = table.f_center[np.isfinite(table.S_lpr)]
+prior_lpr = lambda f: np.interp(f, table.f_center, table.S_lpr)  # or AFM, or a model
+prior_lwr = lambda f: np.interp(f, table.f_center, table.S_lwr)
+bands = cdr.purity_bands(45.0, prior_lpr, prior_lwr, (fc[0], fc[-1]), 0.9, qx_max)
+rows = cdr.isolation_row_psds(pixels, 45.0, bands, table.f_edges, qx_max=qx_max)
+rows["lpr"][1]["S"], rows["lwr"][2]["S"]   # per k, on the same f bins
+```
+
+The rows should agree with the global fit within errors. An offset that grows with $k$ points to a wrong $w$, $s$ or $|\Gamma|$.
+
+![Recovered PSDs (markers) against the input PSDs (lines), with isolation-row estimates](../../assets/images/roughness/howto_psds.png)
+
+## 5. σ in the window and the stored record
+
+`CdRsoxsLoader.extract_psds` runs steps 1 to 3 and returns a `PsdRecord`. The record holds the table, the cross section used, the scale and its source, the data used and $\sigma_{\mathrm{win}}$ for each mode:
+
+```python
+record = loader.extract_psds(xs_by_energy, adu_per_photon=27.0, qx_max=qx_max)
+record.sigma_win["ler"]          # (sigma, error) in nm, over record.window only
+record.save("psds.csv")          # CSV table with a JSON metadata header
+record = cdr.PsdRecord.load("psds.csv")
+record_refit = record.rescale(new_cross_section)   # after a cross-section refit
+```
+
+For a single table, `sigma_window(table.f_center, S, var)` gives $\sigma$ over the measured window. That is the model-free number to report. To extrapolate beyond the window, fit a model with `fit_psd_model(f, S, sigma_S, model="mack")` (models in `PSD_MODELS`), and report the extrapolated fraction separately.
+
+## 6. Reduced maps
+
+`map_reduced` bins the reduced intensity $\mathcal D = M\,|\Gamma|^2 e^{-Q_x^2 s^2}$ of every pixel of every frame into a $Q_x$–$Q_z$ or $Q_y$–$Q_z$ slab. It weights by exposure, so that zero-count pixels are kept and low-count bins are not biased. `plot_reduced_map` marks the isolation rows $Q_x = \pm k\pi/w$. Along such a column, $\mathcal D(Q_z)$ is $|\Gamma(Q_z)|^2$ times one PSD value: a direct test of the cross section.
+
+```python
+qmap = cdr.map_reduced(pixels, "qx-qz", slab_center=0.05, slab_halfwidth=0.02,
+                       bin_q=(0.004, 0.004))
+ax = cdr.plot_reduced_map(qmap, w=45.0)
+```
+
+![Reduced Qx-Qz map of the synthetic rotation series in a Qy slab, with the isolation rows](../../assets/images/roughness/howto_qxqz_map.png)
+
+Choose `bin_q` from the detector pitch in $Q$ (`detector_q_pitch(geometry, energy_ev)`). A slab that excludes $Q_y = 0$ shows no Bragg rods.
 
 ## Validation
 
-`tests/test_roughness.py` checks the code in two ways:
-
-1. **Kernel and decomposition.** An exact Fourier transform of rough lines with independent P and W processes, compared against the decomposition.
-2. **End to end.** Synthetic detector frames from `cd_reduce.simulation.diffuse.synthetic_rough_grating_frame`, which include Ewald curvature, pixel areas and Poisson noise, run through both modes.
-
-Recovery is within about 2 % per bin at high flux.
-
-## Other figures
-
-`examples/roughness_and_figures.py` produces every standard plot:
-
-- detector strips per ω
-- exact vs small-angle butterfly maps (`plot_qmap_grid`)
-- maps in every plane
-- `I` vs `Qx` and `I` vs `Qr` per ω, with a colour bar and ω labels (`plot_traces_by_omega`, from `extract_qx_by_omega(domain="Qx" | "Qr" | "signed_Qr")`)
-- labelled `I_m` vs `Qz` rods (`plot_rods_by_order`)
-
-![Specular 1D](../../assets/images/specular_1d_by_omega_order.png)
+The reduction is tested on frames simulated with the analytic model and on 3D Born and multislice ensembles of explicit rough edges. See `tests/validation/README.md` for what each test proves and the numbers it measured.

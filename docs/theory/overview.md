@@ -8,7 +8,8 @@ This is the landing page for the theoretical documentation of `cd-reduce`. It st
 
 - [Pipeline at a glance](pipeline.md) — compact stage-by-stage walkthrough of the data reduction pipeline and the 2D/3D forward scattering solvers.
 - [Ewald sphere and geometry](geometry_and_ewald.md) — 3D lab-to-sample Ewald sphere transformation, small-angle flat-detector limit, Laue cone calibration, rod-verticality refinement, solid-angle and polarization corrections, $\mathrm{Si_3N_4}$ attenuation, and beam walk-off.
-- [Born approximation and roughness PSD](born_and_roughness.md) — kinematic 2D and 3D Born form-factor integrals, self-affine Palasantzas line-edge / line-width roughness power spectral density, and off-specular diffuse $Q_y$ scattering.
+- [Born approximation and roughness PSD](born_and_roughness.md) — kinematic 2D and 3D Born form-factor integrals, self-affine Palasantzas line-edge / line-width roughness power spectral density.
+- [Roughness PSDs from diffuse scattering](roughness_psd.md) — the two-edge diffuse model, intensity normalisation, edge contrast $\Gamma(Q_z)$, isolation rows, the weighted extraction of LPR / LWR / LER PSDs and its error budget.
 - [Split-step Fourier multislice](multislice.md) — paraxial scalar Helmholtz equation in the tilted sample frame, phase-grating slice transmission and angular-spectrum free-space propagation, internal wavefields, and dynamical Friedel asymmetry.
 
 ## Problem statement

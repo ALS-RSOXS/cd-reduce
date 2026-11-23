@@ -22,13 +22,14 @@ Standalone CD-RSoXS / CD-SAXS data reduction, reciprocal-space mapping, and 2D/3
   - [`map_2d`](src/cd_reduce/reduction/mapping.py) and [`CdRsoxsLoader.to_qmap_2d`](src/cd_reduce/loader.py): bin CCD frame series into 2D [`QMap2D`](src/cd_reduce/reduction/mapping.py) maps across any domain pair (`(Qx, Qz)`, `(Qr, Qz)`, `(signed_Qr, Qz)`, `(Qx, Qy)`, `(Qy, Qz)`, `(Qx, omega)`) with flexible orthogonal cuts (`qz_cut`, `qx_cut`, `qy_cut`, `qr_cut`, `omega_cut`, `fixed_domain`).
   - Specular 1D extraction: [`extract_qx_by_omega`](src/cd_reduce/reduction/mapping.py) ($I$ vs $Q_x$ per sample tilt $\omega$) and [`extract_order_rods_qz`](src/cd_reduce/reduction/mapping.py) ($I_m$ vs $Q_z$ per diffraction order $m$).
 
-- **Roughness PSDs (`cd_reduce.reduction.roughness`)**: the HOWTO reduction. [`reduce_frame`](src/cd_reduce/reduction/roughness/reduce.py) turns each frame into per-pixel reduced intensities $M$; [`fit_psds`](src/cd_reduce/reduction/roughness/extract.py) fits two-sided LPR / LWR PSDs (nm$^3$, vs $f = Q_y/2\pi$) per $|f|$ bin; [`order_scale`](src/cd_reduce/reduction/roughness/scale.py) calibrates the incident photon rate from Bragg orders. `CdRsoxsLoader.reduce_roughness` and `CdRsoxsLoader.extract_psds` wrap these and return a `PsdRecord`.
-- **Plots (`cd_reduce.reduction.plotting`)**: `plot_traces_by_omega` (I vs Qx/Qr per ω, colour bar and labels), `plot_rods_by_order`, `plot_qmap_grid` (e.g. exact vs small-angle butterflies); `plot_reduced_map` for reduced roughness maps.
+- **Roughness PSDs (`cd_reduce.reduction.roughness`)**: LPR / LWR / LER PSDs from the off-specular diffuse of a rotation series ([theory](docs/theory/roughness_psd.md), [how-to](docs/guides/mapping/roughness_psd.md)). [`reduce_frame`](src/cd_reduce/reduction/roughness/reduce.py) turns each frame into per-pixel reduced intensities $M$ through a cross section (`LatentFilm`, `DevelopedLine`); [`fit_psds`](src/cd_reduce/reduction/roughness/extract.py) fits two-sided LPR / LWR PSDs (nm$^3$, vs $f = Q_y/2\pi$) per $|f|$ bin with model-based (IRLS) variances, and `purity_bands` / `isolation_row_psds` check them on the isolation rows $Q_x = k\pi/w$; [`order_scale`](src/cd_reduce/reduction/roughness/scale.py) calibrates the incident photon rate from Bragg orders. `CdRsoxsLoader.reduce_roughness` and `CdRsoxsLoader.extract_psds` wrap these and return a `PsdRecord` (CSV with a JSON header, rescalable to a refitted cross section). `map_reduced` / `plot_reduced_map` build exposure-weighted reduced $Q_x$–$Q_z$ and $Q_y$–$Q_z$ maps. Validated against 3D Born and multislice ensembles of rough gratings (`uv run pytest -m validation`, see [`tests/validation/README.md`](tests/validation/README.md)).
+- **Plots (`cd_reduce.reduction.plotting`)**: `plot_traces_by_omega` (I vs Qx/Qr per ω, colour bar and labels), `plot_rods_by_order`, `plot_qmap_grid` (e.g. exact vs small-angle butterflies); `plot_reduced_map` for reduced roughness maps. Butterfly plots (`plot_omega_butterfly`) and `rod_tilts_mrad` are unsmoothed by default; bins and smoothing are given in nm$^{-1}$ (`bin_q`, `sigma_q`).
 
 ### 2. 2D & 3D Scattering Simulation (`cd_reduce.simulation`)
 
 - **General Optical Constant Maps (`cd_reduce.simulation.structures`)**:
-  - [`RefractiveIndexMap2D`](src/cd_reduce/simulation/structures.py) ($n(x, z) = 1 - \delta(x, z) + i\beta(x, z)$) and [`RefractiveIndexMap3D`](src/cd_reduce/simulation/structures.py) ($n(x, y, z)$), constructed from arbitrary arrays or parameterized grating builders ([`build_grating_2d`](src/cd_reduce/simulation/structures.py), [`build_grating_3d`](src/cd_reduce/simulation/structures.py) with 3D Palasantzas LER / LWR / LPR edge roughness).
+  - [`RefractiveIndexMap2D`](src/cd_reduce/simulation/structures.py) ($n(x, z) = 1 - \delta(x, z) + i\beta(x, z)$) and [`RefractiveIndexMap3D`](src/cd_reduce/simulation/structures.py) ($n(x, y, z)$), constructed from arbitrary arrays or parameterized grating builders ([`build_grating_2d`](src/cd_reduce/simulation/structures.py), [`build_grating_3d`](src/cd_reduce/simulation/structures.py) with LPR / LWR edge roughness from two PSDs, [`build_rough_grating_3d`](src/cd_reduce/simulation/structures.py) from a reduction cross section).
+- **Rough-grating ensembles (`cd_reduce.simulation.rough_scattering`)**: [`simulate_rough_ensemble`](src/cd_reduce/simulation/rough_scattering.py) averages coherent and diffuse scattering over realisations with `engine="born"` or `engine="multislice"` (optional ε Born reference).
 - **Born Approximation (`cd_reduce.simulation.born`)**:
   - [`simulate_born_2d`](src/cd_reduce/simulation/born.py) and [`simulate_born_3d`](src/cd_reduce/simulation/born.py) compute continuous 2D reciprocal-space maps (`(Qx, Qz)`, `(Qx, Qy)`, `(Qy, Qz)`), Bragg rod efficiencies $\eta_m(\omega, Q_z)$, off-specular diffuse $Q_y$ traces, and synthetic 2D detector frames (`to_detector_frame`).
 - **Multislice / Beam Propagation (`cd_reduce.simulation.multislice`)**:
@@ -44,12 +45,21 @@ Runnable scripts covering the complete workflow live in [`examples/`](examples/)
 
 - [`examples/full_process_walkthrough.py`](examples/full_process_walkthrough.py) — End-to-end pipeline from 2D/3D structure construction and Born/Multislice simulation to synthetic FITS generation, spot extraction, Laue geometry calibration, background subtraction, 2D $Q$-mapping, and 1D specular reduction.
 - [`examples/reduction_and_qmapping.py`](examples/reduction_and_qmapping.py) — Calibration modes (single-mount, walk-off, joint beamtime $L_b$, rod verticality), template matching, coordinate projections, and slicing filters.
+- [`examples/roughness_psd_howto.py`](examples/roughness_psd_howto.py) — Roughness PSD reduction on synthetic frames: `reduce_frame`, `fit_psds`, isolation rows, `PsdRecord`, reduced maps.
 - [`examples/simulation_2d_3d.py`](examples/simulation_2d_3d.py) — 2D/3D optical constant maps, kinematic vs. dynamical Multislice wave propagation, 3D rough gratings, and diagnostic plotting.
 
 ```bash
 uv run python examples/full_process_walkthrough.py
 uv run python examples/reduction_and_qmapping.py
 uv run python examples/simulation_2d_3d.py
+uv run python examples/roughness_psd_howto.py
+```
+
+Tests:
+
+```bash
+uv run pytest                  # unit tests
+uv run pytest -m validation    # roughness validation suite (~3.5 min)
 ```
 
 ---

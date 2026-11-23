@@ -27,16 +27,12 @@ $$
 F(Q_x, Q_y, Q_z) = \frac{k_0}{L_x L_y \cos\omega} \iiint \Delta n(x, y, z)\,e^{-i(Q_x x + Q_y y + Q_z z)}\,dx\,dy\,dz
 $$
 
-In [`build_grating_3d`](../api/python/simulation.md#cd_reduce.simulation.structures.build_grating_3d), left and right sidewall displacements $\Delta x_{L,R}(y)$ are synthesized from the self-affine Palasantzas power spectral density:
+In [`build_grating_3d`](../api/python/simulation.md#cd_reduce.simulation.structures.build_grating_3d) and [`build_rough_grating_3d`](../api/python/simulation.md#cd_reduce.simulation.structures.build_rough_grating_3d), each line gets a placement $P(y)$ and a width deviation $W(y)$, drawn by [`generate_edge_field`](../api/python/simulation.md#cd_reduce.simulation.structures.generate_edge_field) from two-sided PSD callables `psd_lpr` and `psd_lwr` of $f = Q_y/2\pi$ (in $\mathrm{nm^3}$). The edges are $u_L = P - W/2$ and $u_R = P + W/2$. The Palasantzas shape (`psd_palasantzas`) is
 
 $$
-\mathrm{PSD}_{\mathrm{LER}}(Q_y) = \frac{2\sigma_{\mathrm{LER}}^2 \xi_y}{\bigl(1 + a (Q_y \xi_y)^2\bigr)^{1/2 + H}}, \qquad a = \frac{\sqrt{\pi}\,\Gamma(H + 1/2)}{2\,\Gamma(H)}
+S(f) = 2\sqrt{\pi}\,\xi\,\sigma^2\,\frac{\Gamma(H+\tfrac12)}{\Gamma(H)}\,\left[1 + (2\pi f \xi)^2\right]^{-(H+\frac12)}
 $$
 
-In the perturbative Born regime ($Q_x \sigma_{\mathrm{LER}} \ll 1$), the off-specular diffuse sheet intensity around the $m$-th Bragg order ($Q_x = m G_0$) normalized to the integrated Bragg order intensity $I_m$ is independent of optical contrast, height, and $Q_z$ form factor:
+with $\sigma^2 = \int S\,\mathrm df$ over both signs of $f$.
 
-$$
-\frac{1}{I_m}\frac{dI_{\mathrm{diff}}}{dQ_x\,dQ_y}\bigg|_{Q_x = m G_0} = \frac{2\Lambda\,\bigl[1 + c\cos(m G_0 w)\bigr]}{(2\pi)^2\,\bigl|F_m^{(x)}(w)\bigr|^2}\,S_{\mathrm{LER}}(Q_y), \qquad F_m^{(x)}(w) = \frac{2\sin(m G_0 w / 2)}{m G_0}
-$$
-
-where $w$ is the line width and $c \in [-1, 1]$ is the cross-correlation coefficient between left and right sidewall displacements ($c = +1$ for pure LER, $c = -1$ for pure symmetric LWR, and $c = 0$ for uncorrelated sidewalls). Setting $c = 0$ yields the parameter-free Born inversion implemented in [`readoff_edge_psd_born`](../api/python/reduction.md#cd_reduce.reduction.mapping.readoff_edge_psd_born).
+The first-order diffuse from rough edges, and how the package inverts it into LPR, LWR and LER PSDs, are described in [Roughness PSDs from diffuse scattering](roughness_psd.md).
