@@ -4,6 +4,7 @@ mapping.
 
 from __future__ import annotations
 
+import inspect
 import json
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar, Literal
@@ -629,6 +630,17 @@ class CdRsoxsLoader:
         first = next(iter(xs_by_energy.values()))
         width = float(first.w if w is None else w)
         px = self.reduce_roughness(xs_by_energy, **reduce_kwargs)
+        if px.M.size == 0:
+            defaults = inspect.signature(self.reduce_roughness).parameters
+            keep = reduce_kwargs.get("keep", defaults["keep"].default)
+            r_b = reduce_kwargs.get("R_B", defaults["R_B"].default)
+            names = {e: type(x).__name__ for e, x in xs_by_energy.items()}
+            msg = (
+                f"no pixels survived the masks (keep={keep}, R_B={r_b} nm^-1, "
+                f"cross sections {names}); lower keep or R_B, or check the "
+                "cross section's contrast and Gamma zeros"
+            )
+            raise ValueError(msg)
         table = fit_psds(
             px,
             width,

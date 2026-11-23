@@ -237,3 +237,12 @@ def test_loader_reduce_roughness_passes_omega_refinement():
     )
     rp = loader.reduce_roughness({285.0: lat}, scale=1e12, adu_per_photon=APP)
     _check(rp, lat, 285.0, 10.0)
+
+
+def test_loader_extract_psds_no_pixels_raises_clearly():
+    from cd_reduce import CdRsoxsLoader
+
+    fr, _ = _frame(lat)
+    loader = CdRsoxsLoader(frames=[fr], geometry=geo, bg_mode="none")
+    with pytest.raises(ValueError, match="no pixels survived the masks"):
+        loader.extract_psds({285.0: lat}, scale=1e12, adu_per_photon=APP, keep=1.5)
