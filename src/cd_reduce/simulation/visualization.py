@@ -24,6 +24,20 @@ if TYPE_CHECKING:
     )
 
 
+
+def _cell_edge_extent(
+    a: np.ndarray, b: np.ndarray
+) -> tuple[float, float, float, float]:
+    """``imshow`` extent spanning cell edges, so cells sit at their true centres."""
+
+    def edges(c: np.ndarray) -> tuple[float, float]:
+        c = np.asarray(c, dtype=np.float64)
+        h = 0.5 * float(c[1] - c[0]) if c.size > 1 else 0.5
+        return float(c[0]) - h, float(c[-1]) + h
+
+    return (*edges(a), *edges(b))
+
+
 def _style_clean_axes(ax: Any, *, line_width: float = 0.75) -> None:
     """Apply clean publication-grade spine and tick styling matching `mkdocs-rsoxs`."""
     for spine in ax.spines.values():
@@ -45,12 +59,7 @@ def plot_structure_2d(
     """Plot a 2D refractive index map `n(x, z) = 1 - delta(x, z) + i * beta(x, z)`."""
     import matplotlib.pyplot as plt
 
-    extent = (
-        float(structure.x_nm[0]),
-        float(structure.x_nm[-1]),
-        float(structure.z_nm[0]),
-        float(structure.z_nm[-1]),
-    )
+    extent = _cell_edge_extent(structure.x_nm, structure.z_nm)
     if component == "both":
         if ax is None:
             _, axes = plt.subplots(1, 2, figsize=(9.6, 3.8), constrained_layout=True)
@@ -133,12 +142,7 @@ def plot_structure_3d(
     else:
         axes_arr = axes
 
-    extent_xy = (
-        float(structure.x_nm[0]),
-        float(structure.x_nm[-1]),
-        float(structure.y_nm[0]),
-        float(structure.y_nm[-1]),
-    )
+    extent_xy = _cell_edge_extent(structure.x_nm, structure.y_nm)
     im0 = axes_arr[0].imshow(
         arr[:, :, iz].T,
         origin="lower",
@@ -154,12 +158,7 @@ def plot_structure_3d(
     cb0 = plt.colorbar(im0, ax=axes_arr[0], fraction=0.046, pad=0.04)
     cb0.set_label(f"{comp_tex}(x, y)")
 
-    extent_xz = (
-        float(structure.x_nm[0]),
-        float(structure.x_nm[-1]),
-        float(structure.z_nm[0]),
-        float(structure.z_nm[-1]),
-    )
+    extent_xz = _cell_edge_extent(structure.x_nm, structure.z_nm)
     im1 = axes_arr[1].imshow(
         arr[:, iy, :].T,
         origin="lower",
@@ -198,12 +197,7 @@ def plot_multislice_wavefield(
         axes_arr = axes
 
     s = result.structure
-    extent = (
-        float(s.x_nm[0]),
-        float(s.x_nm[-1]),
-        float(s.z_nm[0]),
-        float(s.z_nm[-1]),
-    )
+    extent = _cell_edge_extent(s.x_nm, s.z_nm)
     intensity = np.abs(result.internal_wavefield.T) ** 2
     phase = np.angle(result.internal_wavefield.T)
 
@@ -425,12 +419,7 @@ def plot_born_vs_multislice_grid(
         rgba = cmap_struct(struct_norm(np.clip(rel_re, 0.0, 1.4)))
         rgba[vac_mask] = [0.04, 0.04, 0.04, 1.0]
 
-        extent_xz = (
-            float(s.x_nm[0]),
-            float(s.x_nm[-1]),
-            float(s.z_nm[0]),
-            float(s.z_nm[-1]),
-        )
+        extent_xz = _cell_edge_extent(s.x_nm, s.z_nm)
         ax_xs.imshow(
             rgba,
             origin="lower",

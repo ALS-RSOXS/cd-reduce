@@ -597,7 +597,8 @@ def build_grating_2d(
     lx_nm = float(pitch_nm) * max(int(n_periods), 1)
     dx_nm = lx_nm / int(nx)
     dz_nm = total_z / int(nz)
-    x_nm = (np.arange(nx, dtype=np.float64) - 0.5 * nx) * dx_nm
+    # Cell-centred grid, symmetric about x = 0 (line centre).
+    x_nm = (np.arange(nx, dtype=np.float64) + 0.5) * dx_nm - 0.5 * lx_nm
     z_nm = (np.arange(nz, dtype=np.float64) + 0.5) * dz_nm
 
     delta = np.full((nx, nz), float(delta_space), dtype=np.float64)

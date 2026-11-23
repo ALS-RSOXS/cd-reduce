@@ -27,7 +27,6 @@ layers = [
         top_rounding_nm=5.0,
         delta_line=1.9e-3,
         beta_line=7.0e-4,
-        x_center_nm=2.5,
     ),
 ]
 

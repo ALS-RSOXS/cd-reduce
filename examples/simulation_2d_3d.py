@@ -53,7 +53,7 @@ def main() -> None:
     ) / np.linalg.norm(born_weak.order_efficiencies[1])
     print(f"Kinematic limit (m=+1) L2 diff Born vs Multislice: {rel_diff_m1:.4f}")
 
-    # 2. Strong-scattering / thick multi-layer asymmetric grating with dynamical effects
+    # 2. Strong-scattering / thick multi-layer grating with dynamical effects
     layers = [
         cdr.GratingLayerSpec(
             thickness_nm=60.0,
@@ -69,7 +69,6 @@ def main() -> None:
             top_rounding_nm=6.0,
             delta_line=2.5e-3,
             beta_line=6.0e-4,
-            x_center_nm=4.0,
         ),
     ]
     strong_2d = cdr.build_grating_2d(
