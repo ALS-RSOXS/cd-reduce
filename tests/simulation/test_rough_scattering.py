@@ -311,3 +311,14 @@ def test_epsilon_reference_matches_born_engine():
     med = _median_ratio(born_eps, born.diffuse, born.valid)
     print(f"Born-epsilon reference / Born engine diffuse median {med:.6f}")
     assert 0.99 <= med <= 1.01
+
+
+def test_single_realisation_diffuse_is_nan():
+    # One realisation gives no diffuse estimate: NaN, not zero. Coherent is kept.
+    m3 = _random_map(np.random.default_rng(3), 8, 6, 4, 2.0, 3.0, 1.5)
+    res = simulate_rough_ensemble(
+        lambda _rng: m3, [3.0], n_realisations=1, qx_max=10.0, qy_max=10.0
+    )
+    assert np.all(np.isnan(res.diffuse)) and np.all(np.isnan(res.diffuse_var))
+    assert np.all(np.isnan(res.diffuse_flux))
+    assert np.all(np.isfinite(res.coherent[res.valid]))

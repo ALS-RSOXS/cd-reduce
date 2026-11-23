@@ -91,7 +91,7 @@ The `RoughEnsembleResult` holds:
 
 - `qx`, `qy`, `qz` and `valid` on the mode grid;
 - `coherent`, the mean amplitude. Its orders carry the Debye–Waller loss: `order_efficiency(m)`, `order_qz(m)`;
-- `diffuse`, the variance across realisations, with `diffuse_var`.
+- `diffuse`, the variance across realisations, with `diffuse_var`. Both are NaN for `n_realisations=1`, which is only for coherent-only work.
 
 **Flux.** Detector flux carries $1/(\cos W\cos\theta_{\mathrm{out}})$, but amplitudes computed along the tilted path carry $1/\cos^2 W$. Use `diffuse_flux` and `order_flux_efficiency(m)`, which include the per-mode `flux_factor` $= \cos W/\cos\theta_{\mathrm{out}}$, whenever you compare with detector frames.
 

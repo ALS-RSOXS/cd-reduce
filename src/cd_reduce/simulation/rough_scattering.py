@@ -46,8 +46,9 @@ class RoughEnsembleResult:
         ``1 + <A>`` for Born, ``<c(0, 0)>`` for multislice. NaN on invalid modes.
     diffuse : ndarray
         Unbiased ``<|A - <A>|^2>``: ``sum_r |A_r - Abar|^2 / (n - 1)``, i.e.
-        ``(<|A|^2> - |<A>|^2) * n / (n - 1)``. Zero when ``n = 1``. NaN on invalid
-        modes and on the (0, 0) mode (excluded from the diffuse).
+        ``(<|A|^2> - |<A>|^2) * n / (n - 1)``. NaN when ``n = 1`` (one
+        realisation has no diffuse estimate), on invalid modes and on the
+        (0, 0) mode (excluded from the diffuse).
     diffuse_var : ndarray
         Variance of the diffuse estimate: ``var_r(|A_r - Abar|^2, ddof=1) / n``.
         NaN when ``n = 1``, on invalid modes and on the (0, 0) mode.
@@ -206,7 +207,7 @@ class _Moments:
             diffuse = np.maximum(sum_d, 0.0) / (n - 1)
             diffuse_var = np.maximum(sum_d2 - sum_d**2 / n, 0.0) / (n - 1) / n
         else:
-            diffuse = np.zeros(c.shape)
+            diffuse = np.full(c.shape, np.nan)
             diffuse_var = np.full(c.shape, np.nan)
         return self.shift + c, diffuse, diffuse_var
 
@@ -264,7 +265,10 @@ def simulate_rough_ensemble(
     engine
         ``"born"`` (kinematic, this module) or ``"multislice"``.
     n_realisations
-        Number of realisations averaged.
+        Number of realisations averaged. ``1`` is allowed for coherent-only
+        work (e.g. `order_efficiency` of a deterministic structure); ``diffuse``,
+        ``diffuse_var``, their flux forms and ``metadata["born_eps"]`` are then
+        NaN. Use ``n >= 2`` for any diffuse estimate.
     qx_max, qy_max
         Modes with ``|qx| <= qx_max`` and ``|qy| <= qy_max`` (nm^-1) are stored.
     born_reference, epsilon
