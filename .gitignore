@@ -21,5 +21,5 @@ figures_roughness/
 
 # Local scratch and subagent hand-offs
 tmp/
-.superpowers/
+.superpowers/sdd
 tests/validation/results/
