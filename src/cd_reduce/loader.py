@@ -8,6 +8,8 @@ import json
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar, Literal
 
+import numpy as np
+
 from cd_reduce.reduction.calibration import (
     CalibrationResult,
     build_order_table,
@@ -16,6 +18,7 @@ from cd_reduce.reduction.calibration import (
     initial_geometry,
     refine_rod_verticality,
 )
+from cd_reduce.reduction.corrections import DEFAULT_ADU_PER_PHOTON, build_beamstop_mask
 from cd_reduce.reduction.frames import Frame, load_frames
 from cd_reduce.reduction.geometry import (
     ApproximationMode,
@@ -27,29 +30,28 @@ from cd_reduce.reduction.mapping import (
     QMap2D,
     Trace1D,
     extract_bragg_rod,
-    extract_diffuse_cut,
     extract_inplane_linecut,
-    extract_offspec_rod_map,
     extract_order_rods_qz,
     extract_qx_by_omega,
-    extract_rod_localized_diffuse_qy,
     map_2d,
-    readoff_edge_psd_born,
     reduce_1d,
 )
 from cd_reduce.reduction.roughness import (
-    DiffuseRatio,
-    EdgePsdResult,
-    decompose_edge_psd,
-    extract_diffuse_ratio,
+    CrossSection,
+    PsdRecord,
+    ReducedPixels,
+    fit_psds,
+    order_scale,
+    reduce_frame,
+    sigma_window,
 )
+from cd_reduce.reduction.roughness.record import cross_section_dict
 from cd_reduce.reduction.spots import extract_frames_spots
 from cd_reduce.utils.attributes import process_vars_properties
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
 
-    import numpy as np
     import pandas as pd
 
 
@@ -501,105 +503,6 @@ class CdRsoxsLoader:
             bg_mode=bg,
         )
 
-    def extract_diffuse_cut(
-        self,
-        *,
-        direction: Literal["Qy", "Qz", "Qx"] = "Qy",
-        order: int = 1,
-        qx_half_width_g: float = 0.12,
-        qy_band_inv_nm: tuple[float, float] = (0.018, 0.085),
-        qz_cut: tuple[float, float] | None = None,
-        omega_cut: tuple[float, float] | float | None = None,
-        bins: int = 120,
-    ) -> Trace1D:
-        """Extract 1D off-specular diffuse scattering along `Qy`, `Qz`, or `Qx`."""
-        return extract_diffuse_cut(
-            self.frames,
-            self.geometry,
-            direction=direction,
-            order=order,
-            qx_half_width_g=qx_half_width_g,
-            qy_band_inv_nm=qy_band_inv_nm,
-            qz_cut=qz_cut,
-            omega_cut=omega_cut,
-            bins=bins,
-            approximation=self.approximation,
-            bg_mode=self.bg_mode,
-        )
-
-    def extract_offspec_rod_map(
-        self,
-        order: int = 1,
-        *,
-        qy_range: tuple[float, float] = (-0.10, 0.10),
-        n_qy: int = 80,
-        qx_half_g: float = 0.25,
-    ) -> QMap2D:
-        """Extract the normalized 2D off-specular sheet `(dI / d^2Q) / I_m(Qy, Qz)`."""
-        return extract_offspec_rod_map(
-            self.frames,
-            self.geometry,
-            order=order,
-            omega_refinement=self._omega_refinement,
-            qy_range=qy_range,
-            n_qy=n_qy,
-            qx_half_g=qx_half_g,
-        )
-
-    def extract_diffuse_qy(
-        self,
-        order: int = 1,
-        *,
-        frame_index: int = 0,
-        qy_edges: np.ndarray | None = None,
-        on_g: float = 0.15,
-        off_g: tuple[float, float] = (0.25, 0.50),
-        bin_px: int = 1,
-    ) -> pd.DataFrame:
-        """Extract rod-localized off-specular `Qy` diffuse scattering on a single
-        frame.
-        """
-        frame = self.frames[int(frame_index)]
-        return extract_rod_localized_diffuse_qy(
-            frame.image,
-            self.geometry,
-            frame.energy_ev,
-            frame.omega_deg,
-            order=order,
-            qy_edges=qy_edges,
-            on_g=on_g,
-            off_g=off_g,
-            bin_px=bin_px,
-        )
-
-    def readoff_edge_psd(
-        self,
-        cleaned_adu: np.ndarray,
-        qx_map: np.ndarray,
-        qy_map: np.ndarray,
-        order: int = 1,
-        *,
-        line_width_nm: float | None = None,
-        qy_edges: np.ndarray,
-        **kwargs: Any,
-    ) -> pd.DataFrame:
-        """Read off the single-wall Born LER power spectral density `PSD(Qy)`."""
-        lw = (
-            float(line_width_nm)
-            if line_width_nm is not None
-            else 0.5 * float(self.pitch_nm)
-        )
-        return readoff_edge_psd_born(
-            cleaned_adu,
-            qx_map,
-            qy_map,
-            order=order,
-            pitch_nm=float(self.pitch_nm),
-            line_width_nm=lw,
-            qy_edges=qy_edges,
-            **kwargs,
-        )
-
     def extract_profiles_by_omega(
         self,
         domain: str = "Qx",
@@ -622,28 +525,147 @@ class CdRsoxsLoader:
             **kwargs,
         )
 
-    def extract_diffuse_ratio(self, **kwargs: Any) -> DiffuseRatio:
-        """Order-normalised diffuse ``R_m(|Qy|)``; see
-        :func:`cd_reduce.reduction.roughness.extract_diffuse_ratio`.
-
-        ``mode="line_cut"`` reads the detector line cut at one ``omega``;
-        ``mode="qz_trace"`` follows a constant-``Qz`` band through the series.
-        """
-        kwargs.setdefault("approximation", self.approximation)
-        kwargs.setdefault("omega_refinement", self._omega_refinement)
-        return extract_diffuse_ratio(self.frames, self.geometry, **kwargs)
-
-    def extract_edge_psds(
+    def reduce_roughness(
         self,
-        line_width_nm: float,
+        xs_by_energy: Mapping[float, CrossSection],
         *,
-        orders: Sequence[int] = (-4, -3, -2, -1, 1, 2, 3, 4),
-        decompose: Mapping[str, Any] | None = None,
-        **kwargs: Any,
-    ) -> EdgePsdResult:
-        """LER / LWR / LPR PSDs from the diffuse wings by a multi-order Born fit."""
-        ratio = self.extract_diffuse_ratio(orders=orders, **kwargs)
-        return decompose_edge_psd(ratio, line_width_nm, **(decompose or {}))
+        scale: float | Literal["bragg_orders"] = "bragg_orders",
+        window_T: float = 1.0,
+        R_B: float = 0.008,
+        keep: float = 0.1,
+        adu_per_photon: float = DEFAULT_ADU_PER_PHOTON,
+        read_noise_photons: float = 0.0,
+        gamma_zero_halfwidth: float = 0.01,
+    ) -> ReducedPixels:
+        """Reduce every frame to per-pixel ``M`` (HOWTO reduction).
+
+        ``scale`` is the incident photon rate: ``"bragg_orders"`` fits it per energy
+        from the indexed order table (:func:`order_scale`); a float is used for all
+        frames. Cross sections are matched to frame energies within 1e-6 eV
+        (``KeyError`` otherwise). ``meta["scale_source"]`` records the choice and
+        ``meta["scale_by_energy"]`` / ``meta["scale_err_by_energy"]`` the values.
+        """
+        if scale == "bragg_orders":
+            fit = order_scale(
+                self.build_order_table(),
+                xs_by_energy,
+                adu_per_photon=adu_per_photon,
+                window_T=window_T,
+            )
+            by_e, err_e = dict(fit.scale_by_energy), dict(fit.scale_err)
+            source = "bragg_orders"
+        else:
+            by_e = err_e = None
+            source = "known"
+        mask = (
+            build_beamstop_mask(self.frames, self.geometry)
+            if self.auto_beamstop_mask
+            else None
+        )
+
+        def match(table: Mapping[float, Any], e: float) -> Any:
+            key = min(table, key=lambda k: abs(k - e))
+            if abs(key - e) > 1e-6:
+                msg = f"no entry for energy {e} eV"
+                raise KeyError(msg)
+            return table[key]
+
+        items = []
+        for i, fr in enumerate(self.frames):
+            xs = match(xs_by_energy, fr.energy_ev)
+            sc = float(scale) if by_e is None else float(match(by_e, fr.energy_ev))
+            items.append(
+                reduce_frame(
+                    fr,
+                    self.geometry,
+                    xs,
+                    scale=sc,
+                    window_T=window_T,
+                    R_B=R_B,
+                    keep=keep,
+                    gamma_zero_halfwidth=gamma_zero_halfwidth,
+                    adu_per_photon=adu_per_photon,
+                    read_noise_photons=read_noise_photons,
+                    bg_mode=self.bg_mode,
+                    beamstop_mask=mask,
+                    frame_id=i,
+                )
+            )
+        if not items:
+            msg = "no frames loaded"
+            raise ValueError(msg)
+        out = ReducedPixels.concat(items)
+        out.meta["scale_source"] = source
+        if by_e is not None and err_e is not None:
+            out.meta["scale_by_energy"] = by_e
+            out.meta["scale_err_by_energy"] = err_e
+        else:
+            out.meta["scale_by_energy"] = {
+                fr.energy_ev: float(scale) for fr in self.frames
+            }
+            out.meta["scale_err_by_energy"] = {fr.energy_ev: 0.0 for fr in self.frames}
+        return out
+
+    def extract_psds(
+        self,
+        xs_by_energy: Mapping[float, CrossSection],
+        *,
+        w: float | None = None,
+        f_edges: np.ndarray | None = None,
+        cross_term: bool = False,
+        min_pixels: int = 10,
+        max_cond: float = 1e8,
+        qx_max: float | None = None,
+        **reduce_kwargs: Any,
+    ) -> PsdRecord:
+        """LER / LWR / LPR PSDs (two-sided, nm^3, vs ``f = Qy/2pi``) as a `PsdRecord`.
+
+        ``w`` defaults to the first cross section's ``w``. ``reduce_kwargs`` go to
+        :meth:`reduce_roughness`. With several energies, ``record.scale`` and
+        ``scale_err`` hold the first energy's value; the per-energy dicts are in
+        ``record.source["scale_by_energy"]`` / ``["scale_err_by_energy"]``.
+        """
+        first = next(iter(xs_by_energy.values()))
+        width = float(first.w if w is None else w)
+        px = self.reduce_roughness(xs_by_energy, **reduce_kwargs)
+        table = fit_psds(
+            px,
+            width,
+            f_edges,
+            cross_term=cross_term,
+            min_pixels=min_pixels,
+            max_cond=max_cond,
+            qx_max=qx_max,
+        )
+        sigma_win = {
+            k: sigma_window(
+                table.f_center, getattr(table, f"S_{k}"), getattr(table, f"var_{k}")
+            )
+            for k in ("lpr", "lwr", "ler")
+        }
+        fin = table.f_edges[np.isfinite(table.f_edges)]
+        by_e = px.meta["scale_by_energy"]
+        err_e = px.meta["scale_err_by_energy"]
+        e0 = next(iter(by_e))
+        source = {
+            "energies_ev": sorted({float(e) for e in px.energy_ev}),
+            "omega_range_deg": [float(px.omega_deg.min()), float(px.omega_deg.max())],
+            "R_B": px.meta.get("R_B"),
+            "qz_mean": float(np.mean(px.Qz)),
+            "w": width,
+            "scale_by_energy": {float(k): float(v) for k, v in by_e.items()},
+            "scale_err_by_energy": {float(k): float(v) for k, v in err_e.items()},
+        }
+        return PsdRecord(
+            table=table,
+            cross_section=cross_section_dict(first),
+            scale=float(by_e[e0]),
+            scale_err=float(err_e[e0]),
+            scale_source=px.meta["scale_source"],
+            source=source,
+            window=(float(fin[0]), float(fin[-1])),
+            sigma_win=sigma_win,
+        )
 
 
 __all__ = ["CdRsoxsLoader"]

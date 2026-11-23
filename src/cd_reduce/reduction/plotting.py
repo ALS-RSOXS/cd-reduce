@@ -7,13 +7,11 @@
   ``+m`` / ``-m`` at the right.
 - :func:`plot_qmap_grid`: grid of 2D maps (e.g. samples x {exact, small-angle})
   with the ``Qy = 0`` Ewald trace overlaid in each panel's own mapping.
-- :func:`plot_edge_psds` and :func:`plot_diffuse_ratio`: roughness results.
 """
 
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from typing import Any
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -21,7 +19,6 @@ from matplotlib.axes import Axes
 from matplotlib.cm import ScalarMappable
 from matplotlib.colors import LogNorm, Normalize
 from matplotlib.figure import Figure
-from matplotlib.ticker import NullFormatter
 
 from cd_reduce.reduction.geometry import Geometry, ewald_trace_qxqz
 from cd_reduce.reduction.mapping import (
@@ -30,7 +27,6 @@ from cd_reduce.reduction.mapping import (
     Trace1D,
     domain_axis_label,
 )
-from cd_reduce.reduction.roughness import DiffuseRatio, EdgePsdResult, PsdFit
 
 
 def _finite_pos(tr: Trace1D) -> np.ndarray:
@@ -257,145 +253,7 @@ def plot_qmap_grid(
     return fig
 
 
-PSD_COLORS = {"LER": "#1f2937", "LWR": "#d62728", "LPR": "#1f77b4"}
-
-
-def plot_edge_psds(
-    result: EdgePsdResult,
-    *,
-    which: Sequence[str] = ("LER", "LWR", "LPR"),
-    fits: Mapping[str, PsdFit] | None = None,
-    reference: Mapping[str, tuple[np.ndarray, np.ndarray]] | None = None,
-    show_rho: bool = True,
-) -> Figure:
-    """Log-log LER / LWR / LPR PSDs vs ``Qy`` with a frequency axis on top.
-
-    ``fits`` maps a PSD name to a :class:`PsdFit` drawn as a line; ``reference``
-    maps a label to ``(qy, S)`` (e.g. AFM) drawn as faint points. With
-    ``show_rho`` a lower panel shows the left/right edge correlation.
-    """
-    if show_rho:
-        fig, (ax, axr) = plt.subplots(
-            2, 1, figsize=(4.4, 5.2), sharex=True, gridspec_kw={"height_ratios": [3, 1]}
-        )
-    else:
-        fig, ax = plt.subplots(figsize=(4.4, 4.0))
-        axr = None
-    t = result.table
-    dec = t["decomposed"].to_numpy(dtype=bool)
-    for name in which:
-        col = PSD_COLORS.get(name, "0.3")
-        s = t[f"S_{name}"].to_numpy()
-        e = t[f"S_{name}_err"].to_numpy()
-        ok = np.isfinite(s) & (s > 0)
-        ax.errorbar(
-            t["qy_center"][ok & dec],
-            s[ok & dec],
-            e[ok & dec],
-            fmt="o",
-            ms=4,
-            color=col,
-            lw=0.8,
-            label=name,
-        )
-        if np.any(ok & ~dec):
-            ax.errorbar(
-                t["qy_center"][ok & ~dec],
-                s[ok & ~dec],
-                e[ok & ~dec],
-                fmt="o",
-                ms=4,
-                mfc="white",
-                color=col,
-                lw=0.8,
-            )
-        if fits and name in fits:
-            qq = np.geomspace(*fits[name].qy_range, 200)
-            ax.plot(qq, fits[name](qq), "-", color=col, lw=1.0, alpha=0.8)
-    for lab, (q, s_ref) in (reference or {}).items():
-        key = next((k for k in PSD_COLORS if k in lab), None)
-        ax.plot(
-            q, s_ref, ":", color=PSD_COLORS.get(key or "", "0.5"), lw=1.2, label=lab
-        )
-    ax.set_xscale("log")
-    ax.set_yscale("log")
-    ax.set_ylabel(r"PSD (nm$^3$)")
-    ax.xaxis.set_minor_formatter(NullFormatter())
-    ax.legend(frameon=False, fontsize=8)
-    sec = ax.secondary_xaxis(
-        "top", functions=(lambda v: v / (2 * np.pi), lambda v: 2 * np.pi * v)
-    )
-    sec.set_xlabel(r"$f$ (nm$^{-1}$)")
-    sec.xaxis.set_minor_formatter(NullFormatter())
-    if axr is not None:
-        r = t["rho_LR"].to_numpy()
-        axr.plot(t["qy_center"][dec], r[dec], "o-", color="0.25", ms=3, lw=0.8)
-        axr.axhline(0, color="0.7", lw=0.6)
-        axr.set_ylim(-1.05, 1.05)
-        axr.set_ylabel(r"$\rho_{LR}$")
-        axr.set_xlabel(r"$|Q_y|$ (nm$^{-1}$)")
-    else:
-        ax.set_xlabel(r"$|Q_y|$ (nm$^{-1}$)")
-    fig.tight_layout()
-    return fig
-
-
-def plot_diffuse_ratio(
-    ratio: DiffuseRatio,
-    *,
-    ax: Axes | None = None,
-    show_flank: bool = True,
-    **_: Any,
-) -> tuple[Figure, Axes]:
-    """``R_m(|Qy|)`` per order (filled +m, open -m); inter-order flank dashed."""
-    if ax is None:
-        fig, ax = plt.subplots(figsize=(4.4, 3.8))
-    else:
-        fig = ax.figure  # type: ignore[assignment]
-    for m in ratio.orders:
-        t = ratio.for_order(m)
-        col = ORDER_PALETTE.get(abs(m), "0.3")
-        ok = np.isfinite(t["ratio"]) & (t["ratio"] > 0)
-        ax.errorbar(
-            t["qy_center"][ok],
-            t["ratio"][ok],
-            t["ratio_err"][ok],
-            fmt="o-",
-            ms=3.5,
-            lw=0.8,
-            color=col,
-            mfc=col if m > 0 else "white",
-            label=f"{m:+d}",
-        )
-        if show_flank:
-            okf = np.isfinite(t["flank_ratio"]) & (t["flank_ratio"] > 0)
-            ax.plot(
-                t["qy_center"][okf],
-                t["flank_ratio"][okf],
-                "--",
-                color=col,
-                lw=0.6,
-                alpha=0.6,
-            )
-    ax.set_xscale("log")
-    ax.set_yscale("log")
-    ax.xaxis.set_minor_formatter(NullFormatter())
-    ax.set_xlabel(r"$|Q_y|$ (nm$^{-1}$)")
-    ax.set_ylabel(r"$(dI/d^2Q)\,/\,I_{\rm ref}$ (nm$^2$)")
-    ttl = f"{ratio.mode}"
-    if ratio.metadata.get("qz_range") is not None:
-        lo, hi = ratio.metadata["qz_range"]
-        ttl += rf", $Q_z\in[{lo:.3g},{hi:.3g}]$"
-    elif ratio.metadata.get("omega") is not None:
-        ttl += rf", $\omega$ = {ratio.metadata['omega']:g}°"
-    ax.set_title(ttl, fontsize=9)
-    ax.legend(frameon=False, fontsize=7, ncol=2)
-    return fig, ax  # type: ignore[return-value]
-
-
 __all__ = [
-    "plot_diffuse_ratio",
-    "plot_edge_psds",
     "plot_qmap_grid",
     "plot_rods_by_order",
     "plot_traces_by_omega",

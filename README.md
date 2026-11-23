@@ -21,10 +21,9 @@ Standalone CD-RSoXS / CD-SAXS data reduction, reciprocal-space mapping, and 2D/3
 - **2D Mapping & 1D Specular / Off-Specular Extraction (`cd_reduce.reduction.mapping`)**:
   - [`map_2d`](src/cd_reduce/reduction/mapping.py) and [`CdRsoxsLoader.to_qmap_2d`](src/cd_reduce/loader.py): bin CCD frame series into 2D [`QMap2D`](src/cd_reduce/reduction/mapping.py) maps across any domain pair (`(Qx, Qz)`, `(Qr, Qz)`, `(signed_Qr, Qz)`, `(Qx, Qy)`, `(Qy, Qz)`, `(Qx, omega)`) with flexible orthogonal cuts (`qz_cut`, `qx_cut`, `qy_cut`, `qr_cut`, `omega_cut`, `fixed_domain`).
   - Specular 1D extraction: [`extract_qx_by_omega`](src/cd_reduce/reduction/mapping.py) ($I$ vs $Q_x$ per sample tilt $\omega$) and [`extract_order_rods_qz`](src/cd_reduce/reduction/mapping.py) ($I_m$ vs $Q_z$ per diffraction order $m$).
-  - Off-specular & diffuse extraction: [`extract_diffuse_cut`](src/cd_reduce/reduction/mapping.py) (directional diffuse cuts along $Q_y$, $Q_z$, or $Q_x$), [`extract_offspec_rod_map`](src/cd_reduce/reduction/mapping.py), and [`readoff_edge_psd_born`](src/cd_reduce/reduction/mapping.py) (Born LER power spectral density).
 
-- **Roughness PSDs (`cd_reduce.reduction.roughness`)**: [`extract_diffuse_ratio`](src/cd_reduce/reduction/roughness.py) reads the order-normalised diffuse $R_m(Q_y)$, either as a detector line cut (`mode="line_cut"`) or along a constant-$Q_z$ trace through the tilt series (`mode="qz_trace"`), with Ewald-$Q_z$ and core-background corrections. [`decompose_edge_psd`](src/cd_reduce/reduction/roughness.py) splits it by a multi-order Born fit into **LPR, LWR and LER** PSDs plus the edge correlation $\rho$. Mack, power-law and spectral-peak fits are included. See [the guide](docs/guides/mapping/roughness_psd.md).
-- **Plots (`cd_reduce.reduction.plotting`)**: `plot_traces_by_omega` (I vs Qx/Qr per ω, colour bar and labels), `plot_rods_by_order`, `plot_qmap_grid` (e.g. exact vs small-angle butterflies), `plot_diffuse_ratio`, `plot_edge_psds`. Run them all with `uv run python examples/roughness_and_figures.py`.
+- **Roughness PSDs (`cd_reduce.reduction.roughness`)**: the HOWTO reduction. [`reduce_frame`](src/cd_reduce/reduction/roughness/reduce.py) turns each frame into per-pixel reduced intensities $M$; [`fit_psds`](src/cd_reduce/reduction/roughness/extract.py) fits two-sided LPR / LWR PSDs (nm$^3$, vs $f = Q_y/2\pi$) per $|f|$ bin; [`order_scale`](src/cd_reduce/reduction/roughness/scale.py) calibrates the incident photon rate from Bragg orders. `CdRsoxsLoader.reduce_roughness` and `CdRsoxsLoader.extract_psds` wrap these and return a `PsdRecord`.
+- **Plots (`cd_reduce.reduction.plotting`)**: `plot_traces_by_omega` (I vs Qx/Qr per ω, colour bar and labels), `plot_rods_by_order`, `plot_qmap_grid` (e.g. exact vs small-angle butterflies); `plot_reduced_map` for reduced roughness maps.
 
 ### 2. 2D & 3D Scattering Simulation (`cd_reduce.simulation`)
 
@@ -43,7 +42,7 @@ Standalone CD-RSoXS / CD-SAXS data reduction, reciprocal-space mapping, and 2D/3
 
 Runnable scripts covering the complete workflow live in [`examples/`](examples/):
 
-- [`examples/full_process_walkthrough.py`](examples/full_process_walkthrough.py) — End-to-end pipeline from 2D/3D structure construction and Born/Multislice simulation to synthetic FITS generation, spot extraction, Laue geometry calibration, background subtraction, 2D $Q$-mapping, and 1D specular/diffuse reduction.
+- [`examples/full_process_walkthrough.py`](examples/full_process_walkthrough.py) — End-to-end pipeline from 2D/3D structure construction and Born/Multislice simulation to synthetic FITS generation, spot extraction, Laue geometry calibration, background subtraction, 2D $Q$-mapping, and 1D specular reduction.
 - [`examples/reduction_and_qmapping.py`](examples/reduction_and_qmapping.py) — Calibration modes (single-mount, walk-off, joint beamtime $L_b$, rod verticality), template matching, coordinate projections, and slicing filters.
 - [`examples/simulation_2d_3d.py`](examples/simulation_2d_3d.py) — 2D/3D optical constant maps, kinematic vs. dynamical Multislice wave propagation, 3D rough gratings, and diagnostic plotting.
 
@@ -78,9 +77,6 @@ qmap_qy_qz = loader.to_qmap_2d("Qy", "Qz", qx_cut=(0.055, 0.071))
 ridges_qx = loader.extract_qx_by_omega()
 rods_qz = loader.extract_order_rods_qz(orders=(-4, -3, -2, -1, 1, 2, 3, 4))
 
-# Extract directional off-specular diffuse scattering (Qy, Qz, or Qx)
-diffuse_qy = loader.extract_diffuse_cut(direction="Qy", order=1)
-diffuse_qz = loader.extract_diffuse_cut(direction="Qz", order=1)
 ```
 
 ### 2. Simulate 2D & 3D Structures (Born vs. Multislice)

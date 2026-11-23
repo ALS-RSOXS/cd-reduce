@@ -277,21 +277,12 @@ def main() -> None:
         print("\n=== Step 7: 1D Specular & Off-Specular Reduction ===")
         rods_by_order = loader.extract_order_rods_qz(orders=(-1, 1), bins=40)
         ridges_by_omega = loader.extract_qx_by_omega(omegas=[-20.0, 0.0, 20.0], bins=80)
-        diff_qy = loader.extract_diffuse_cut(direction="Qy", order=1, bins=30)
-        psd_df = loader.readoff_edge_psd(
-            img_corner,
-            pq.Qx,
-            pq.Qy,
-            order=1,
-            line_width_nm=45.0,
-            qy_edges=np.linspace(0.005, 0.08, 12),
-        )
+        # LER/LWR PSD extraction (loader.extract_psds) needs measured data and a
+        # cross section; see the roughness guide in the docs.
         print(
             f"1D reductions complete: "
             f"orders extracted={sorted(rods_by_order.keys())}, "
-            f"omega ridges={len(ridges_by_omega)}, "
-            f"diffuse Qy bins={diff_qy.coords.size}, "
-            f"LER PSD rows={len(psd_df)}"
+            f"omega ridges={len(ridges_by_omega)}"
         )
 
 

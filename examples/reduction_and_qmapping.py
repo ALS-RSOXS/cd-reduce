@@ -10,8 +10,8 @@ Covers:
 3. Pixel-to-Q mapping modes (`"correct"`, `"small_angle"`, `"angle_linear"`).
 4. All 2D QMap2D projections (`Qx`, `Qy`, `Qz`, `Qr`, `signed_Qr`, `Q`, `omega`,
    `two_theta`) and slice filters (`qz_cut`, `omega_cut`, `qx_cut`, `qr_cut`).
-5. Specular and off-specular 1D extractions (`extract_order_rods_qz`,
-   `extract_qx_by_omega`, `extract_diffuse_cut`, and `reduce_1d`).
+5. Specular 1D extractions (`extract_order_rods_qz`, `extract_qx_by_omega`, and
+   `reduce_1d`). For roughness PSDs see `CdRsoxsLoader.extract_psds`.
 """
 
 from __future__ import annotations
@@ -159,15 +159,14 @@ def main() -> None:
             f"non-empty bins={int(np.sum(qm.N > 0))}"
         )
 
-    # 5. Specular and off-specular 1D extractions
+    # 5. Specular 1D extractions
     rods = cdr.extract_order_rods_qz(frames_dev, geom, orders=(-1, 1), bins=40)
     ridges = cdr.extract_qx_by_omega(
         frames_dev, geom, omegas=[-20.0, 0.0, 20.0], bins=100
     )
-    diff_qy = cdr.extract_diffuse_cut(frames_dev, geom, direction="Qy", order=1)
     print(
         f"1D extractions: orders={sorted(rods.keys())}, "
-        f"omega ridges={len(ridges)}, diffuse Qy bins={diff_qy.coords.size}"
+        f"omega ridges={len(ridges)}"
     )
 
 

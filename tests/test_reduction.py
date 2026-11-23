@@ -20,14 +20,11 @@ from cd_reduce import (
     build_order_table,
     compute_pixel_q,
     ewald_trace_qxqz,
-    extract_diffuse_cut,
     extract_frame_spots,
     extract_inplane_linecut,
     extract_line_strip,
-    extract_offspec_rod_map,
     extract_order_rods_qz,
     extract_qx_by_omega,
-    extract_rod_localized_diffuse_qy,
     fit_geometry_with_walkoff,
     fit_joint_geometry,
     fit_strip_background,
@@ -39,7 +36,6 @@ from cd_reduce import (
     plot_detector_strips,
     plot_specular_1d_panels,
     process_frame_strip,
-    readoff_edge_psd_born,
     reduce_1d,
     refine_rod_verticality,
     simulate_born_2d,
@@ -356,50 +352,10 @@ def test_mapping_2d_all_combinations_and_1d_reduction() -> None:
     tr_2th = reduce_1d(frames, geom, domain="two_theta", bins=40)
     assert tr_2th.domain == "two_theta"
 
-    # 7. Off-specular diffuse cuts (Qy, Qz, Qx), 2D rod map, and PSD read-off
-    diff_qy = loader.extract_diffuse_cut(direction="Qy", order=1, bins=24)
-    assert diff_qy.domain == "Qy"
-    diff_qz = extract_diffuse_cut(
-        frames, geom, direction="Qz", order=1, qy_band_inv_nm=(0.015, 0.06), bins=20
-    )
-    assert diff_qz.domain == "Qz"
-    diff_qx = extract_diffuse_cut(
-        frames, geom, direction="Qx", qy_band_inv_nm=(0.015, 0.06), bins=30
-    )
-    assert diff_qx.domain == "Qx"
-
-    offspec_map = loader.extract_offspec_rod_map(order=1, n_qy=20)
-    assert offspec_map.x_domain == "Qy"
-    assert offspec_map.y_domain == "Qz"
-    offspec_direct = extract_offspec_rod_map(frames, geom, order=1, n_qy=16)
-    assert offspec_direct.H.shape[0] == 16
-
-    diff_df = loader.extract_diffuse_qy(order=1, frame_index=2)
-    assert "streak_adu" in diff_df.columns
     yy, xx = np.meshgrid(
         np.arange(128, dtype=float), np.arange(128, dtype=float), indexing="ij"
     )
     pq = compute_pixel_q(geom, xx, yy, 285.0, 0.0)
-    psd_res = readoff_edge_psd_born(
-        frames[2].image,
-        pq.Qx,
-        pq.Qy,
-        order=1,
-        pitch_nm=100.0,
-        line_width_nm=45.0,
-        qy_edges=np.linspace(0.005, 0.08, 12),
-    )
-    assert "psd_nm3" in psd_res
-    rod_diff = extract_rod_localized_diffuse_qy(
-        frames[2].image,
-        geom,
-        energy_ev=285.0,
-        omega_deg=0.0,
-        order=1,
-        qy_edges=np.linspace(0.005, 0.08, 10),
-    )
-    assert len(rod_diff) == 9
-
     # 8. Plotting helpers (detector strips and specular 1D panels)
     strips_map = {
         0.0: extract_line_strip(geom, frames[2].image, pq.Qx, pq.Qy, half_width_px=12),

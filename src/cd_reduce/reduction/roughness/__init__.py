@@ -1,15 +1,5 @@
-"""Roughness: PSD models, line cross sections and the legacy Born-kernel extractor."""
+"""Roughness: HOWTO pixel reduction, PSD extraction, models and line cross sections."""
 
-from cd_reduce.reduction.roughness._legacy import (
-    DiffuseRatio,
-    EdgePsdResult,
-    combine_diffuse_ratios,
-    decompose_edge_psd,
-    edge_psd_kernel,
-    estimate_line_width,
-    extract_diffuse_ratio,
-    form_factor_sq,
-)
 from cd_reduce.reduction.roughness.cross_section import (
     CrossSection,
     DevelopedLine,
@@ -61,8 +51,6 @@ __all__ = [
     "PSD_MODELS",
     "CrossSection",
     "DevelopedLine",
-    "DiffuseRatio",
-    "EdgePsdResult",
     "LatentFilm",
     "OrderScaleFit",
     "PsdFit",
@@ -70,18 +58,12 @@ __all__ = [
     "PsdTable",
     "ReducedPixels",
     "absorption_factor",
-    "combine_diffuse_ratios",
     "cos_theta_out",
     "debye_waller_sigma",
-    "decompose_edge_psd",
     "default_f_edges",
     "detector_q_pitch",
-    "edge_psd_kernel",
-    "estimate_line_width",
-    "extract_diffuse_ratio",
     "fit_psd_model",
     "fit_psds",
-    "form_factor_sq",
     "howto_prefactor",
     "isolation_row_psds",
     "map_reduced",

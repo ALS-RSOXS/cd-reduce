@@ -83,7 +83,6 @@ nav:
           - 2D structures and wavefields: guides/simulation/structures_2d.md
           - 2D Born vs. Multislice: guides/simulation/born_vs_multislice_2d.md
           - 3D rough line gratings: guides/simulation/rough_gratings_3d.md
-      - "Case study - resist gratings": guides/case_study/index.md
   - Theory:
       - Overview: theory/overview.md
       - Pipeline at a glance: theory/pipeline.md
