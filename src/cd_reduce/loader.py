@@ -622,12 +622,17 @@ class CdRsoxsLoader:
     ) -> PsdRecord:
         """LER / LWR / LPR PSDs (two-sided, nm^3, vs ``f = Qy/2pi``) as a `PsdRecord`.
 
-        ``w`` defaults to the first cross section's ``w``. ``reduce_kwargs`` go to
-        :meth:`reduce_roughness`. With several energies, ``record.scale`` and
-        ``scale_err`` hold the first energy's value; the per-energy dicts are in
-        ``record.source["scale_by_energy"]`` / ``["scale_err_by_energy"]``.
+        Energies are taken in ascending order, so the record does not depend on
+        the order of ``xs_by_energy``. ``w`` defaults to the lowest energy's cross
+        section ``w``. ``reduce_kwargs`` go to :meth:`reduce_roughness`. With
+        several energies, ``record.scale``, ``scale_err`` and ``cross_section``
+        are the lowest energy's; the per-energy values are in
+        ``record.source["scale_by_energy"]`` / ``["scale_err_by_energy"]`` /
+        ``["cross_section_by_energy"]``, and :meth:`PsdRecord.rescale` needs
+        ``energy_ev=`` to pick one.
         """
-        first = next(iter(xs_by_energy.values()))
+        energies = sorted(xs_by_energy)
+        first = xs_by_energy[energies[0]]
         width = float(first.w if w is None else w)
         px = self.reduce_roughness(xs_by_energy, **reduce_kwargs)
         if px.M.size == 0:
@@ -659,16 +664,21 @@ class CdRsoxsLoader:
         fin = table.f_edges[np.isfinite(table.f_edges)]
         by_e = px.meta["scale_by_energy"]
         err_e = px.meta["scale_err_by_energy"]
-        e0 = next(iter(by_e))
+        e0 = min(by_e)
         source = {
             "energies_ev": sorted({float(e) for e in px.energy_ev}),
             "omega_range_deg": [float(px.omega_deg.min()), float(px.omega_deg.max())],
             "R_B": px.meta.get("R_B"),
             "qz_mean": float(np.mean(px.Qz)),
             "w": width,
-            "scale_by_energy": {float(k): float(v) for k, v in by_e.items()},
-            "scale_err_by_energy": {float(k): float(v) for k, v in err_e.items()},
+            "scale_by_energy": {float(k): float(by_e[k]) for k in sorted(by_e)},
+            "scale_err_by_energy": {float(k): float(err_e[k]) for k in sorted(err_e)},
         }
+        if len(energies) > 1:
+            source["cross_section_by_energy"] = [
+                {"energy_ev": float(e), "cross_section": cross_section_dict(xs)}
+                for e, xs in ((e, xs_by_energy[e]) for e in energies)
+            ]
         return PsdRecord(
             table=table,
             cross_section=cross_section_dict(first),

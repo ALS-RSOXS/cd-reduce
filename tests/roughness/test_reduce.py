@@ -246,3 +246,38 @@ def test_loader_extract_psds_no_pixels_raises_clearly():
     loader = CdRsoxsLoader(frames=[fr], geometry=geo, bg_mode="none")
     with pytest.raises(ValueError, match="no pixels survived the masks"):
         loader.extract_psds({285.0: lat}, scale=1e12, adu_per_photon=APP, keep=1.5)
+
+
+def _two_energy_loader():
+    from cd_reduce import CdRsoxsLoader
+
+    xss, frames = {}, []
+    for i, E in enumerate((280.0, 288.6)):
+        xs = DevelopedLine(
+            h_d=25, energy_ev=E, L=80, w=45, s=2.5, dn_A=(-1e-3 + 2e-4j) * (1 + i)
+        )
+        xss[E] = xs
+        frames.append(_frame(xs, E=E)[0])
+    return CdRsoxsLoader(frames=frames, geometry=geo, bg_mode="none"), xss
+
+
+def test_loader_extract_psds_independent_of_dict_order():
+    from cd_reduce.reduction.roughness.record import cross_section_dict
+
+    loader, xss = _two_energy_loader()
+    kw = {"scale": 1e12, "adu_per_photon": APP}
+    a = loader.extract_psds(dict(xss), **kw)
+    b = loader.extract_psds(dict(reversed(list(xss.items()))), **kw)
+    assert a.cross_section == b.cross_section == cross_section_dict(xss[280.0])
+    assert (a.scale, a.scale_err) == (b.scale, b.scale_err)
+    assert a.source == b.source
+    assert [c["energy_ev"] for c in a.source["cross_section_by_energy"]] == [
+        280.0,
+        288.6,
+    ]
+    for n in ("S_lpr", "S_lwr", "var_ler", "cond"):
+        np.testing.assert_array_equal(getattr(a.table, n), getattr(b.table, n))
+    with pytest.raises(ValueError, match="energy_ev"):
+        a.rescale(xss[280.0])
+    q = a.rescale(replace(xss[288.6], dn_A=2 * xss[288.6].dn_A), energy_ev=288.6)
+    assert np.allclose(q.table.S_lpr, a.table.S_lpr / 4, equal_nan=True)

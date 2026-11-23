@@ -112,7 +112,9 @@ class PsdRecord:
             model_fit=meta["model_fit"],
         )  # fmt: skip
 
-    def rescale(self, new_xs: CrossSection) -> PsdRecord:
+    def rescale(
+        self, new_xs: CrossSection, *, energy_ev: float | None = None
+    ) -> PsdRecord:
         """Rescale S and var by the contrast ratio ``|dn_A|^2 |Gamma|^2`` old/new.
 
         ``Gamma`` is the unit-contrast form factor, so ``|dn_A|^2`` is included
@@ -124,8 +126,32 @@ class PsdRecord:
         ratio is evaluated at ``source["qz_mean"]`` (0.0 if absent), an
         approximation. The old cross-section is rebuilt from the record, so
         it must be LatentFilm or DevelopedLine.
+
+        Rescaling applies to one energy only. If ``source`` lists more than
+        one energy, ``energy_ev`` must name the one whose cross section is
+        replaced (its entry in ``source["cross_section_by_energy"]`` is the old
+        cross section); otherwise ``ValueError`` is raised.
         """
-        old = self.cross_section_obj()
+        energies = list(self.source.get("energies_ev", []))
+        by_e = self.source.get("cross_section_by_energy")
+        if energy_ev is None and len(energies) > 1:
+            raise ValueError(
+                f"record has energies {energies}; rescale applies to one energy, "
+                "pass energy_ev= to pick it"
+            )
+        src = self.source
+        if energy_ev is not None and by_e:
+            j = int(np.argmin([abs(c["energy_ev"] - energy_ev) for c in by_e]))
+            if abs(by_e[j]["energy_ev"] - energy_ev) > 1e-6:
+                raise ValueError(f"no cross section for energy {energy_ev} eV")
+            entry = by_e[j]["cross_section"]
+            cls = _CLASSES.get(entry.get("class", ""))
+            old = cls(**entry["params"]) if cls else None
+            new_list = [dict(c) for c in by_e]
+            new_list[j]["cross_section"] = cross_section_dict(new_xs)
+            src = {**self.source, "cross_section_by_energy": new_list}
+        else:
+            old = self.cross_section_obj()
         if old is None:
             raise ValueError("cannot rescale: unknown cross-section class")
         qz = float(self.source.get("qz_mean", 0.0))
@@ -146,7 +172,9 @@ class PsdRecord:
             k: (v[0] * np.sqrt(ratio), v[1] * np.sqrt(ratio))
             for k, v in self.sigma_win.items()
         }
+        lowest = energy_ev is None or not by_e or j == 0
         return replace(
-            self, table=replace(t, **upd), cross_section=cross_section_dict(new_xs),
-            sigma_win=sw,
+            self, table=replace(t, **upd),
+            cross_section=cross_section_dict(new_xs) if lowest else self.cross_section,
+            sigma_win=sw, source=src,
         )  # fmt: skip
