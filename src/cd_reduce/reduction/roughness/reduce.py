@@ -8,7 +8,7 @@ No PSD model is used here.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from typing import Any
 
@@ -16,7 +16,7 @@ import numpy as np
 from numpy.typing import NDArray
 
 from cd_reduce.reduction.frames import Frame
-from cd_reduce.reduction.geometry import Geometry, PixelQMap
+from cd_reduce.reduction.geometry import Geometry, OmegaRefinement, PixelQMap
 from cd_reduce.reduction.mapping import BackgroundMode, prepare_frame
 from cd_reduce.reduction.roughness.cross_section import CrossSection
 
@@ -130,6 +130,7 @@ def reduce_frame(
     read_noise_photons: float = 0.0,
     bg_mode: BackgroundMode = "none",
     beamstop_mask=None,
+    omega_refinement: OmegaRefinement | Mapping[str, Any] | None = None,
     frame_id: int = 0,
 ) -> ReducedPixels:
     """Reduce one frame to per-pixel ``M`` with variance, dropping masked pixels.
@@ -137,6 +138,10 @@ def reduce_frame(
     ``scale`` is incident photons per second. The *contrast* used for the
     ``keep`` threshold is ``|Gamma(Qz)|^2 exp(-Qx^2 s^2)``, relative to its
     maximum over the otherwise valid pixels of this frame.
+
+    ``omega_refinement`` is applied through :func:`prepare_frame`; the pixel Q,
+    the incidence angle ``W`` (absorption, window transmission, prefactor) all
+    come from the refined per-frame geometry.
     """
     if beamstop_mask is not None and np.shape(beamstop_mask) != frame.image.shape:
         raise ValueError("beamstop_mask shape must match the frame image shape")
@@ -146,6 +151,7 @@ def reduce_frame(
         bg_mode=bg_mode,
         approximation="correct",
         beamstop_mask=beamstop_mask,
+        omega_refinement=omega_refinement,
         exposure_normalization=False,
         adu_per_photon=adu_per_photon,
     )

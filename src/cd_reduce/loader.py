@@ -588,6 +588,7 @@ class CdRsoxsLoader:
                     read_noise_photons=read_noise_photons,
                     bg_mode=self.bg_mode,
                     beamstop_mask=mask,
+                    omega_refinement=self._omega_refinement,
                     frame_id=i,
                 )
             )

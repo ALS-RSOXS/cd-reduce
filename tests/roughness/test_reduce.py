@@ -209,3 +209,31 @@ def test_masks_have_positive_controls():
         keep=0.0,
     )
     assert np.any(np.abs(rp.Qz - 2 * np.pi / 80) < 0.01)
+
+
+def test_reduce_frame_uses_omega_refinement():
+    from cd_reduce.reduction.geometry import OmegaRefinement
+
+    ref = OmegaRefinement(d_omega0_deg=1.5, c0_px=3.0)
+    g_ref = geo.with_omega_refinement(ref, 10.0)
+    fr, _ = _frame(lat, g=g_ref, window_T=0.5)
+    rp = reduce_frame(
+        fr, geo, lat, scale=1e12, adu_per_photon=APP, window_T=0.5,
+        omega_refinement=ref,
+    )  # fmt: skip
+    _check(rp, lat, 285.0, 10.0)
+    rp0 = reduce_frame(fr, geo, lat, scale=1e12, adu_per_photon=APP, window_T=0.5)
+    assert not np.allclose(rp0.M, _m_true(rp0.Qx, lat.w), rtol=1e-3)
+
+
+def test_loader_reduce_roughness_passes_omega_refinement():
+    from cd_reduce import CdRsoxsLoader
+    from cd_reduce.reduction.geometry import OmegaRefinement
+
+    ref = OmegaRefinement(d_omega0_deg=1.5, c0_px=3.0)
+    fr, _ = _frame(lat, g=geo.with_omega_refinement(ref, 10.0))
+    loader = CdRsoxsLoader(
+        frames=[fr], geometry=geo, omega_refinement=ref, bg_mode="none"
+    )
+    rp = loader.reduce_roughness({285.0: lat}, scale=1e12, adu_per_photon=APP)
+    _check(rp, lat, 285.0, 10.0)
