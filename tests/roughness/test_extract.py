@@ -414,3 +414,26 @@ def test_cross_term_recovered_all_quadrants():
     assert np.allclose(t.S_cross / S_X(c), 1, atol=1e-3)
     assert np.allclose(t.S_lpr / S_P(c), 1, atol=1e-3)
     assert np.allclose(t.S_lwr / S_W(c), 1, atol=1e-3)
+
+
+def test_fit_psds_flags_bin_ill_conditioned_by_final_weights(monkeypatch):
+    # One IRLS pass: the initial weights are well conditioned, but the model
+    # variance update makes the off-null pixels worthless, leaving only
+    # pixels on sin(Qx w/2) = 0 (S_LPR unconstrained).
+    from dataclasses import replace
+
+    import cd_reduce.reduction.roughness.extract as ex
+
+    monkeypatch.setattr(ex, "_IRLS_ITERS", 0)
+    edges = np.array([F_LO, F_HI])
+    rng = np.random.default_rng(27)
+    n = 200
+    k = rng.integers(1, 3, n)
+    qx = np.where(np.arange(n) < n // 2, 2 * np.pi * k / W, rng.uniform(0.02, 0.3, n))
+    f = np.exp(rng.uniform(np.log(F_LO), np.log(F_HI), n))
+    M = 4 * np.sin(qx * W / 2) ** 2 * 3.0 + np.cos(qx * W / 2) ** 2 * 5.0
+    mpp = np.where(np.arange(n) < n // 2, 1e-6, 1e9)
+    px = replace(make(qx, f, M, np.ones(n)), m_per_photon=mpp)
+    t = fit_psds(px, W, edges)
+    assert np.isinf(t.cond[0])
+    assert np.isnan(t.S_lpr[0]) and np.isnan(t.var_lpr[0])

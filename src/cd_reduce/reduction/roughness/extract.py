@@ -103,7 +103,10 @@ def fit_psds(
 ) -> PsdTable:
     """Weighted two-mode (optionally three-unknown) least squares per |f| bin.
 
-    Covariance is inv(N) * max(1, chi2_red); estimates are never clipped.
+    Covariance is inv(N) * max(1, chi2_red); estimates are never clipped. A bin
+    whose normal matrix N (at any IRLS step, including the final weights used
+    for ``cov``) has a condition number above ``max_cond`` or not finite is
+    returned as NaN with ``cond = inf``.
 
     The two-mode columns ``4 sin^2(Qx w/2)`` and ``cos^2(Qx w/2)`` are even and
     use ``|Qx|`` and ``|f|``. With ``cross_term=True`` the third column is
@@ -170,11 +173,18 @@ def fit_psds(
             v = _model_var(A @ beta, mp, read, v_fix)
         if beta is None:
             continue
+        # final weights may differ from the ones checked in the loop: re-guard
         wt = 1.0 / v
         N = A.T @ (A * wt[:, None])
         with np.errstate(all="ignore"):
-            cond[i] = np.linalg.cond(N)
-        inv = np.linalg.inv(N)
+            c = np.linalg.cond(N)
+        if not np.isfinite(c) or c > max_cond:
+            continue
+        try:
+            inv = np.linalg.inv(N)
+        except np.linalg.LinAlgError:
+            continue
+        cond[i] = c
         r = m - A @ beta
         dof = n - p
         c2 = float(np.sum(wt * r * r) / dof) if dof > 0 else np.nan
