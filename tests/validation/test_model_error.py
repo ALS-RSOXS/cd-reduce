@@ -15,6 +15,7 @@ from __future__ import annotations
 import json
 from itertools import pairwise
 from pathlib import Path
+from types import SimpleNamespace
 
 import numpy as np
 import pytest
@@ -31,7 +32,7 @@ from cd_reduce.reduction.roughness import (
 
 from . import reference as ref
 from .forward.ensemble_frames import ensemble_vs_model_ratio
-from .forward.matched_model import matched_model_frames
+from .forward.matched_model import matched_model_frames, mode_grid_M
 from .forward.model_frames import render_model_frame
 from .forward.orders import order_table
 
@@ -219,8 +220,12 @@ def test_ensemble_matches_model(ensembles, case):
 
 
 @pytest.mark.parametrize("case", MODEL_CASES)
-def test_ensemble_recovers_sigma_window(ensembles, case):
-    _check_sigma_window(ensembles, case)
+def test_ensemble_recovers_sigma_window(request, case):
+    # Single-mode developed cases pool 32 realisations (n = 4 x K = 8): at 16
+    # they sat at 0.952 / 0.953 (noise); at 32 they are ~0.975. The two-mode
+    # cases are within 1-3% at 16 and keep the shared n = 2 ensembles (runtime).
+    fixture = "ensembles_pooled32" if case.endswith("_developed") else "ensembles"
+    _check_sigma_window(request.getfixturevalue(fixture), case)
 
 
 def test_latent_nonseparable_report(ensembles):
@@ -245,6 +250,45 @@ def test_latent_nonseparable_report(ensembles):
         }
     RESULTS.mkdir(exist_ok=True)
     (RESULTS / "latent_nonseparable.json").write_text(json.dumps(out, indent=1))
+
+
+def test_single_mode_sigma_window_report(ensembles, ensembles_pooled32):
+    """Report only: sigma_win ratios of the developed single-mode cases at 16 and 32."""
+    out = {}
+    for case in ("lpr_developed", "lwr_developed"):
+        r16 = sigma_window_ratios(ensembles, case)
+        r32 = sigma_window_ratios(ensembles_pooled32, case)
+        assert all(np.isfinite(v) for v in (*r16.values(), *r32.values()))
+        out[case] = {"pooled_16": r16, "pooled_32": r32}
+    RESULTS.mkdir(exist_ok=True)
+    (RESULTS / "sigma_win_single_mode.json").write_text(json.dumps(out, indent=1))
+
+
+def test_matched_model_normalisation_guard():
+    """White-noise edges with known S_P, S_W: matched M averages to the HOWTO M."""
+    xs = ref.developed(285.0)
+    nl, ny, ly, n_real = 4, 256, 1024.0, 400
+    dy = ly / ny
+    sp_w, sw_w = 0.8, 1.7  # white PSDs, nm^3: variance = S / dy per sample
+    rng = np.random.default_rng(7)
+    edges = [
+        (
+            rng.normal(0, np.sqrt(sp_w / dy), (nl, ny)),
+            rng.normal(0, np.sqrt(sw_w / dy), (nl, ny)),
+        )
+        for _ in range(n_real)
+    ]
+    qx = np.linspace(0.02, 0.3, 8)
+    iy = np.arange(1, 40)
+    res = SimpleNamespace(qx=qx, metadata={"iy_full": iy})
+    Mg = mode_grid_M(res, edges, xs.L, xs.w, ly)
+    expect = (
+        4 * np.sin(qx * xs.w / 2) ** 2 * sp_w + np.cos(qx * xs.w / 2) ** 2 * sw_w
+    )[:, None]
+    ratio = Mg.mean(axis=1) / expect[:, 0]
+    # sin^2/cos^2 weights vanish at nulls; compare away from them
+    ok = expect[:, 0] > 0.2 * expect.max()
+    assert np.all(np.abs(ratio[ok] - 1) < 0.02), ratio
 
 
 def m_invariance_chi2(ensembles, case: str) -> tuple[float, int]:
@@ -362,7 +406,7 @@ def test_developed_line_case(ensembles):
 
 
 def test_first_order_deficit_report(ensembles):
-    """Report (no criterion): ensemble/model ratio of sums vs |Qx| to 0.375 (R19)."""
+    """Report (no criterion): pooled ensemble/matched-model ratio vs |Qx| (R19)."""
     cfg = ensembles.cfg
     geo = cfg["geometry"]
     uu, vv = frame_pixel_grid(cfg["shape"])
@@ -371,11 +415,7 @@ def test_first_order_deficit_report(ensembles):
     for case in (*ROUGH, "both_developed"):
         G = 2 * np.pi / ref.CASES[case]["xs"](285.0).L
         per_om = {}
-        for fe, fm in zip(
-            ensembles.frames(case, poisson=False),
-            _model_frames(ensembles, case),
-            strict=True,
-        ):
+        for fe, fm in zip(*_pooled_frames(ensembles, case), strict=True):
             qm = compute_pixel_q(
                 geo, uu, vv, fe.energy_ev, fe.omega_deg, approximation="correct"
             )

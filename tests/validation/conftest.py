@@ -92,6 +92,9 @@ class _EnsembleCache:
                 make, -np.asarray(cfg["ensemble_omegas"]),
                 n_realisations=cfg["ensemble_n_real"], seed=2000 + 101 * seed,
             )  # fmt: skip
+            assert len(edges) == cfg["ensemble_n_real"], (
+                f"{len(edges)} edge sets collected, expected {cfg['ensemble_n_real']}"
+            )
             self._edges[key] = edges
         return self._res[key]
 
@@ -181,3 +184,9 @@ class _EnsembleCache:
 @pytest.fixture(scope="session")
 def ensembles():
     return _EnsembleCache()
+
+
+@pytest.fixture(scope="session")
+def ensembles_pooled32():
+    """n = 4 per seed (32 pooled realisations) for the sigma_win criteria."""
+    return _EnsembleCache(n_real=4)

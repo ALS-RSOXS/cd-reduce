@@ -18,6 +18,7 @@ from scipy.interpolate import RegularGridInterpolator
 
 from cd_reduce.reduction.geometry import compute_pixel_q, frame_pixel_grid
 
+from .ensemble_frames import frame_omega_deg
 from .model_frames import render_model_frame
 
 
@@ -47,7 +48,7 @@ def matched_model_frames(result, edges, xs, geometry, *, scale, shape, adu_per_p
     )  # fmt: skip
     uu, vv = frame_pixel_grid(shape)
     frames = []
-    for om in -np.asarray(result.omega_deg) - geometry.omega0_deg:
+    for om in frame_omega_deg(result.omega_deg, geometry):
         qm = compute_pixel_q(
             geometry, uu, vv, xs.energy_ev, om, approximation="correct"
         )

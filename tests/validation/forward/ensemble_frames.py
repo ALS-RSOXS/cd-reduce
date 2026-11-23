@@ -31,6 +31,15 @@ def _interp(qx, qy, values, Qx, Qy) -> np.ndarray:
     return f(np.stack([Qx, Qy], axis=-1))
 
 
+def frame_omega_deg(engine_omega_deg, geometry: Geometry):
+    """Detector ``omega_deg`` of a frame simulated at engine tilt ``engine_omega_deg``.
+
+    R21: the engine's tilt sense is opposite to the detector's ``W = omega +
+    omega0``, so the frame sits at ``-omega_sim - omega0``.
+    """
+    return -np.asarray(engine_omega_deg, dtype=float) - geometry.omega0_deg
+
+
 def render_ensemble_frame(
     result: RoughEnsembleResult,
     i_omega: int,
@@ -62,7 +71,7 @@ def render_ensemble_frame(
     # The simulation tilts the beam by +omega_sim in the sample frame (Qz ~
     # -qx sin omega_sim); the detector geometry's W = omega + omega0 has the
     # opposite sense (Qz ~ +Qx sin W). The frame therefore has W = -omega_sim.
-    om = -float(result.omega_deg[i_omega]) - geometry.omega0_deg
+    om = float(frame_omega_deg(result.omega_deg[i_omega], geometry))
     k = 2 * np.pi * E / _HC_EV_NM
     uu, vv = frame_pixel_grid(shape)
     qm = compute_pixel_q(geometry, uu, vv, E, om, approximation="correct")
