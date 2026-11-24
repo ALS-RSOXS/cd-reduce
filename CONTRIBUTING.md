@@ -67,3 +67,22 @@ We use [Conventional Commits](https://www.conventionalcommits.org/). Examples:
 - We use [ty](https://docs.astral.sh/ty/) for static type checking
 - All public functions, methods, and dataclasses must be properly typed and documented with Google-style docstrings
 - Never hard-code machine-specific or user-specific paths in library, test, or example code
+
+## Continuous integration and releases
+
+- **CI** (`.github/workflows/ci.yml`) runs on pushes and PRs to `main`: lint and
+  format check, tests on Python 3.13 and 3.14 (with coverage), the HOWTO validation
+  suite (`make validation`), and a strict docs build. The `ty` type check is advisory
+  until its existing diagnostics are cleared.
+- **Docs** (`docs.yml`) build and deploy to GitHub Pages on every push to `main`.
+- **Security** (`security.yml`) runs a dependency scan and semgrep weekly and on PRs
+  that touch `uv.lock` or `pyproject.toml`.
+- **Releases** (`release.yml`) are driven by the version number. To release:
+  1. In a PR, bump `version` in `pyproject.toml` and `__version__` in
+     `src/cd_reduce/__init__.py` to the same value (`make release-check` verifies).
+  2. Merge it. On `main`, the workflow sees that tag `vX.Y.Z` does not exist yet, runs
+     CI, builds and smoke-tests the wheel, publishes to PyPI by trusted publishing,
+     then creates the tag and a GitHub release with notes from `git-cliff`.
+  - "Run workflow" with `dry_run` builds everything without publishing or tagging.
+  - Commit messages follow Conventional Commits (`feat:`, `fix:`, `docs:`, …) so the
+    release notes group them.
