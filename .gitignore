@@ -23,3 +23,7 @@ figures_roughness/
 tmp/
 .superpowers/sdd
 tests/validation/results/
+.superpowers/
+skills/system/run-workflow/
+.coverage
+coverage.xml
