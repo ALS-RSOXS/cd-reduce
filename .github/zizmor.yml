@@ -1,0 +1,6 @@
+# zizmor configuration (https://docs.zizmor.sh/configuration/)
+rules:
+  # Suggests the newer `$/...` self-repository syntax; `./...` is the documented
+  # local reusable-workflow form and is what actionlint validates.
+  self-repository:
+    disable: true

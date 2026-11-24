@@ -20,7 +20,7 @@ type-check:
 	uv run ty check src
 
 install:
-	uv sync --all-groups
+	uv sync --all-groups --locked
 
 test:
 	uv run pytest -q

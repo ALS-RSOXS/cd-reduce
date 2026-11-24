@@ -1,10 +1,11 @@
 # Release: when a push to main changes the package and the version in pyproject.toml
 # has no git tag yet, run CI, build the wheel and sdist, publish to PyPI (trusted
-# publishing), then create the tag `vX.Y.Z` and a GitHub release with git-cliff notes.
+# publishing, with attestations), then create the tag `vX.Y.Z` and a GitHub release
+# with git-cliff notes.
 #
 # To release: bump `version` in pyproject.toml AND `__version__` in
 # src/cd_reduce/__init__.py in a normal PR and merge it. `make release-check` shows
-# what would happen. Use "Run workflow" with dry_run to build without publishing.
+# what would happen. "Run workflow" with dry_run builds without publishing.
 name: Release
 
 on:
@@ -21,8 +22,7 @@ on:
         type: boolean
         default: false
 
-permissions:
-  contents: read
+permissions: {}
 
 concurrency:
   group: release
@@ -32,11 +32,15 @@ jobs:
   check:
     name: decide whether to release
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     outputs:
       release: ${{ steps.v.outputs.release }}
       version: ${{ steps.v.outputs.version }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - id: v
         run: python3 scripts/release_check.py --github-output "$GITHUB_OUTPUT"
 
@@ -44,24 +48,37 @@ jobs:
     name: tests
     needs: check
     if: needs.check.outputs.release == 'true' || inputs.dry_run
+    permissions:
+      contents: read
     uses: ./.github/workflows/ci.yml
-    secrets: inherit
+    secrets:
+      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
   build:
     name: build wheel and sdist
     needs: [check, ci]
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
-      - run: uv python install 3.13
-      - run: uv build
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # No cache in the release path (cache-poisoning hardening).
+      - uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d # v10.4.0
+        with:
+          version: "0.12.6"
+          python-version: "3.13"
+          enable-cache: false
+      - run: uv build --no-sources
       - name: smoke-test the wheel
+        env:
+          VERSION: ${{ needs.check.outputs.version }}
         run: |
           uv venv /tmp/smoke
           uv pip install --python /tmp/smoke/bin/python dist/*.whl
-          /tmp/smoke/bin/python -c "import cd_reduce, sys; v = cd_reduce.__version__; assert v == '${{ needs.check.outputs.version }}', v; print('cd_reduce', v)"
-      - uses: actions/upload-artifact@v4
+          /tmp/smoke/bin/python -c "import os, cd_reduce; v = cd_reduce.__version__; assert v == os.environ['VERSION'], v; print('cd_reduce', v)"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: dist
           path: dist/
@@ -69,7 +86,10 @@ jobs:
   publish-pypi:
     name: publish to PyPI
     needs: [check, build]
-    if: ${{ !inputs.dry_run }}
+    # Only from main, only when the version is new, never on a dry run.
+    if: >-
+      needs.check.outputs.release == 'true' && !inputs.dry_run
+      && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     environment:
       name: pypi
@@ -77,31 +97,29 @@ jobs:
     permissions:
       id-token: write # PyPI trusted publishing (OIDC)
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: dist
           path: dist
-      - uses: pypa/gh-action-pypi-publish@release/v1
-        with:
-          skip-existing: true
+      - uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086 # v1.14.3
 
   github-release:
     name: tag and GitHub release
     needs: [check, publish-pypi]
-    if: ${{ !inputs.dry_run }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
-      - uses: actions/download-artifact@v4
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: dist
           path: dist
       - name: release notes
-        uses: orhun/git-cliff-action@v4
+        uses: orhun/git-cliff-action@a9a95522b26fe6403f7bb24031f21fb573d0f5ff # v4.9.1
         with:
           config: cliff.toml
           args: --unreleased --tag v${{ needs.check.outputs.version }} --strip header
