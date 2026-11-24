@@ -8,6 +8,7 @@ version = "0.1.0"
 description = "Reducing and simulating CD-RSoXS / CD-SAXS data collected at ALS beamline 11.0.1.2"
 readme = "README.md"
 license = "MIT"
+license-files = ["LICENSE"]
 requires-python = ">=3.13"
 authors = [
     { name = "Harlan D Heilman", email = "73567020+HarlanHeilman@users.noreply.github.com" }
