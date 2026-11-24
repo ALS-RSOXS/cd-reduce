@@ -140,3 +140,11 @@
   color: var(--muted-foreground);
 }
 @media (max-width: 720px) { .ewald-figure__readout { overflow-x: auto; } }
+.ewald-figure__sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}

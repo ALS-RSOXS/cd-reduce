@@ -25,16 +25,18 @@
   const ORDER_COLORS = ["#0ea5e9", "#f59e0b", "#10b981", "#f43f5e", "#8b5cf6",
                         "#14b8a6", "#eab308", "#ec4899"];
 
-  const rodQz = (k, G, w, m) => {
-    const s = Math.sin(w * D2R), c = Math.cos(w * D2R);
-    const d = k * k - (m * G - k * s) ** 2;
-    return d <= 0 ? null : -k * c + Math.sqrt(d);
-  };
+  // Point (qx, qy, qz) on the sphere, or null when it is not reached or would be
+  // scattered backwards (a transmission detector only sees k_out . z_lab > 0,
+  // i.e. k + qz cos w - qx sin w > 0 in the sample frame).
   const sheetQz = (k, w, qx, qy) => {
     const s = Math.sin(w * D2R), c = Math.cos(w * D2R);
     const d = k * k - (qx - k * s) ** 2 - qy * qy;
-    return d <= 0 ? null : -k * c + Math.sqrt(d);
+    if (d <= 0) return null;
+    const qz = -k * c + Math.sqrt(d);
+    return k + qz * c - qx * s > 0 ? qz : null;
   };
+  const rodQz = (k, G, w, m) => sheetQz(k, w, m * G, 0);
+  const smallAngleQz = (G, w, m) => m * G * Math.tan(w * D2R);
   const orderColor = (m) => ORDER_COLORS[(Math.abs(m) - 1) % ORDER_COLORS.length];
   const fmt = (v, d = 4) => (v === null || !Number.isFinite(v) ? "—" : v.toFixed(d));
 
@@ -126,9 +128,10 @@
         this.cOmega.wrap, this.cEnergy.wrap, pitchWrap,
         el("div", { class: "ewald-figure__buttons" }, [this.bPlay, this.bReset]),
       ]);
-      this.readout = el("div", { class: "ewald-figure__readout", "aria-live": "polite" });
+      this.readout = el("div", { class: "ewald-figure__readout" });
+      this.summary = el("div", { class: "ewald-figure__sr", "aria-live": "polite" });
       this.badge = el("div", { class: "ewald-figure__badge" });
-      this.root.append(panels, controls, this.readout, this.badge);
+      this.root.append(panels, controls, this.readout, this.summary, this.badge);
     }
 
     bind() {
@@ -141,6 +144,9 @@
         s.energy = Number(this.cEnergy.input.value);
         this.draw();
       });
+      for (const input of [this.cOmega.input, this.cEnergy.input, this.cPitch]) {
+        input.addEventListener("change", () => this.announce());
+      }
       this.cPitch.addEventListener("input", () => {
         const v = Number(this.cPitch.value);
         if (v >= 20 && v <= 500) { s.pitch = v; this.draw(); }
@@ -176,6 +182,7 @@
 
     reset() {
       Object.assign(this.state, this.defaults, { playing: false });
+      this.gen = (this.gen || 0) + 1;
       this.cOmega.input.value = String(this.state.omega);
       this.cEnergy.input.value = String(this.state.energy);
       this.cPitch.value = String(this.state.pitch);
@@ -187,9 +194,10 @@
       const s = this.state;
       s.playing = !s.playing;
       this.bPlay.textContent = s.playing ? "Pause" : "Sweep ω";
-      if (!s.playing) return;
+      const gen = (this.gen = (this.gen || 0) + 1);
+      if (!s.playing) { this.announce(); return; }
       const step = () => {
-        if (!s.playing) return;
+        if (!s.playing || gen !== this.gen) return;
         s.omega += 0.35 * s.dir;
         if (Math.abs(s.omega) >= OMEGA_RANGE) {
           s.omega = Math.sign(s.omega) * OMEGA_RANGE;
@@ -377,6 +385,7 @@
       const sw = Math.sin(s.omega * D2R), cw = Math.cos(s.omega * D2R);
       // sphere centre C = (k sin w, -k cos w); origin O on the sphere
       const Ox = cx - R * sw, Oy = cyy - R * cw;
+      c.save();
       c.fillStyle = t.bg;
       c.strokeStyle = t.border;
       c.lineWidth = 1;
@@ -384,6 +393,7 @@
       c.rect(x0, y0, size, size);
       c.fill();
       c.stroke();
+      c.clip();
       c.strokeStyle = t.accent;
       c.globalAlpha = 0.9;
       c.beginPath();
@@ -414,6 +424,7 @@
       c.font = `11px ${t.font}`;
       c.fillText("whole sphere", x0 + 6, y0 + 14);
       c.fillText("kᵢ", (cx + Ox) / 2 + 5, (cyy + Oy) / 2);
+      c.restore();
       c.font = `12px ${t.font}`;
     }
 
@@ -507,7 +518,7 @@
       const cell = (v) => `<td>${fmt(v)}</td>`;
       const head = ms.map((m) => `<th style="color:${orderColor(m)}">${m > 0 ? "+" : ""}${m}</th>`);
       const exact = ms.map((m) => rodQz(g.k, g.G, s.omega, m));
-      const flat = ms.map((m) => m * g.G * Math.tan(s.omega * D2R));
+      const flat = ms.map((m, i) => (exact[i] === null ? null : smallAngleQz(g.G, s.omega, m)));
       this.readout.innerHTML =
         `<div><b>k</b> = ${fmt(g.k, 3)} nm⁻¹ · <b>λ</b> = ${fmt(lam, 3)} nm · `
         + `<b>G</b> = ${fmt(g.G, 4)} nm⁻¹</div>`
@@ -515,6 +526,15 @@
         + `<tbody><tr><th>Q<sub>z</sub> exact</th>${exact.map(cell).join("")}</tr>`
         + `<tr><th>Q<sub>z</sub> small-angle</th>${flat.map(cell).join("")}</tr></tbody></table>`
         + `<div class="ewald-figure__muted">Q<sub>z</sub> in nm⁻¹; “—” means the rod does not reach the sphere at this ω.</div>`;
+    }
+
+    announce() {
+      const s = this.state;
+      const g = this.derived();
+      const n = [];
+      for (let m = -s.mmax; m <= s.mmax; m++) if (m && rodQz(g.k, g.G, s.omega, m) !== null) n.push(m);
+      this.summary.textContent = `ω ${s.omega.toFixed(1)}°, ${s.energy.toFixed(0)} eV, `
+        + `pitch ${s.pitch} nm: ${n.length} of ${2 * s.mmax} orders reach the Ewald sphere.`;
     }
 
     async checkFixtures(url) {
@@ -532,7 +552,7 @@
         }
         ok = ok && maxErr < 1e-9;
         this.badge.textContent = ok
-          ? `✓ Same formula as cd_reduce’s geometry: ${n} reference cases, max |ΔQz| = ${maxErr.toExponential(1)} nm⁻¹`
+          ? `✓ Matches the ${n} reference cases that tests check against cd_reduce’s geometry, max |ΔQz| = ${maxErr.toExponential(1)} nm⁻¹`
           : `✗ Figure disagrees with the reference cases (max |ΔQz| = ${maxErr.toExponential(1)} nm⁻¹)`;
         this.badge.classList.toggle("is-bad", !ok);
       } catch (err) {
@@ -540,6 +560,11 @@
       }
     }
   }
+
+  if (typeof module !== "undefined" && module.exports) {
+    module.exports = { HC, rodQz, sheetQz, smallAngleQz };
+  }
+  if (typeof document === "undefined") return;
 
   function init() {
     document.querySelectorAll(".ewald-figure[data-ewald]").forEach((root) => {
