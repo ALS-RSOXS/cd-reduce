@@ -17,11 +17,11 @@ _HC_EV_NM = 1239.84198
 _DEFAULT_ORDERS = (-4, -3, -2, -1, 1, 2, 3, 4)
 
 
-def _debye_waller(m, L: float, sigma):
+def _debye_waller(m: ArrayLike, L: ArrayLike, sigma: ArrayLike) -> NDArray[np.float64]:
     """``exp(-m^2 G^2 sigma^2)`` with ``G = 2 pi / L``."""
     return np.exp(
         -(np.asarray(m, dtype=float) ** 2)
-        * (2 * np.pi / L) ** 2
+        * (2 * np.pi / np.asarray(L, dtype=float)) ** 2
         * np.asarray(sigma) ** 2
     )
 

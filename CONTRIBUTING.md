@@ -72,8 +72,8 @@ We use [Conventional Commits](https://www.conventionalcommits.org/). Examples:
 
 - **CI** (`.github/workflows/ci.yml`) runs on pushes and PRs to `main`: lint and
   format check, tests on Python 3.13 and 3.14 (with coverage), the HOWTO validation
-  suite (`make validation`), and a strict docs build. The `ty` type check is advisory
-  until its existing diagnostics are cleared.
+  suite (`make validation`), a `ty` type check, a strict docs build, and a zizmor
+  audit of the workflows. Every job must pass; a release runs this whole suite first.
 - **Docs** (`docs.yml`) build and deploy to GitHub Pages on every push to `main`.
 - **Security** (`security.yml`) runs a dependency scan and semgrep weekly and on PRs
   that touch `uv.lock` or `pyproject.toml`.

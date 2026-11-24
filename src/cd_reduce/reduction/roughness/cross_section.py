@@ -32,12 +32,18 @@ FArr = NDArray[np.float64]
 class CrossSection(Protocol):
     """Interface the reduction uses for a line cross section."""
 
-    L: float
-    w: float
-    s: float
-    dn_A: complex
-    energy_ev: float
-    top_facing: Literal["upstream", "downstream"]
+    @property
+    def L(self) -> float: ...
+    @property
+    def w(self) -> float: ...
+    @property
+    def s(self) -> float: ...
+    @property
+    def dn_A(self) -> complex: ...
+    @property
+    def energy_ev(self) -> float: ...
+    @property
+    def top_facing(self) -> Literal["upstream", "downstream"]: ...
 
     @property
     def height(self) -> float: ...
@@ -71,12 +77,21 @@ def _exposed(x: ArrayLike, w: float, s: float, uL: ArrayLike, uR: ArrayLike) -> 
 class _Base:
     """Shared Qz orientation, f_m, mu_h; subclasses give ``_g``/``_gamma``/Delta n."""
 
-    L: float
-    w: float
-    s: float
-    dn_A: complex
-    energy_ev: float
-    top_facing: str
+    # Read-only views of the subclasses' frozen dataclass fields (typing only).
+    if TYPE_CHECKING:
+
+        @property
+        def L(self) -> float: ...
+        @property
+        def w(self) -> float: ...
+        @property
+        def s(self) -> float: ...
+        @property
+        def dn_A(self) -> complex: ...
+        @property
+        def energy_ev(self) -> float: ...
+        @property
+        def top_facing(self) -> Literal["upstream", "downstream"]: ...
 
     def _q(self, Qz: ArrayLike) -> FArr:
         q = _safe_qz(Qz)

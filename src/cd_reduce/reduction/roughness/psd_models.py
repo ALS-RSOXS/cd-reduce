@@ -92,7 +92,9 @@ def sigma_from_psd(
     f_hi: float = np.inf,
 ) -> float:
     """RMS ``sqrt(2 int_{f_lo}^{f_hi} S df)`` of a two-sided PSD callable [nm]."""
-    val, _ = quad(lambda f: float(psd(np.float64(f))), f_lo, f_hi, limit=400)
+    val, _ = quad(
+        lambda f: float(psd(np.asarray(f, dtype=np.float64))), f_lo, f_hi, limit=400
+    )
     return float(np.sqrt(2.0 * val)) if val > 0 else float("nan")
 
 
@@ -212,7 +214,7 @@ def fit_psd_model(
     x0 = np.clip(x0, lo + 1e-9, hi - 1e-9)
 
     def _res(x: NDArray[np.float64]) -> NDArray[np.float64]:
-        pars = [_from(v, n) for v, n in zip(x, names, strict=True)]
+        pars = [_from(float(v), n) for v, n in zip(x, names, strict=True)]
         m = np.clip(fn(q, *pars), 1e-300, None)
         return (np.log(m) - np.log(s)) * s / e
 

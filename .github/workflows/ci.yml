@@ -40,10 +40,8 @@ jobs:
       - run: make lint format-check
 
   type-check:
-    name: type check (advisory)
+    name: type check
     runs-on: ubuntu-latest
-    # ty still reports existing diagnostics; make this blocking once they are cleared.
-    continue-on-error: true
     permissions:
       contents: read
     steps:

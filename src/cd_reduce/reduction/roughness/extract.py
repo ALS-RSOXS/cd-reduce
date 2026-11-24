@@ -290,7 +290,7 @@ def _wmean_bins(
             new = float(np.sum(wt * x) / wt.sum())
             done = mu is not None and abs(new - mu) <= _IRLS_TOL * max(abs(mu), 1e-300)
             mu = new
-            if m is None or done or not np.isfinite(m[s]).any():
+            if m is None or g is None or done or not np.isfinite(m[s]).any():
                 break
             ms, gs = m[s], g[s]
             v = _model_var(gs * mu, ms, read, v0 * gs**2) / gs**2

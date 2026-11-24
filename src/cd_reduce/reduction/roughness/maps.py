@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import Any, Literal
 
 import numpy as np
 from matplotlib.axes import Axes
@@ -106,7 +106,7 @@ def plot_reduced_map(
         _, ax = plt.subplots(figsize=(6.0, 4.5))
     img = qmap.mean
     pos = img[np.isfinite(img) & (img > 0)]
-    kw = {}
+    kw: dict[str, Any] = {}
     if pos.size:
         vmax = float(np.percentile(pos, 99.9))
         kw["norm"] = LogNorm(vmin=max(vmax * 1e-4, float(pos.min())), vmax=vmax)

@@ -42,7 +42,10 @@ def _dec(d: dict) -> Any:
 
 def cross_section_dict(xs: CrossSection) -> dict:
     """``{"class": name, "params": dataclasses.asdict(xs)}``."""
-    return {"class": type(xs).__name__, "params": dataclasses.asdict(xs)}  # type: ignore[call-overload]
+    if not dataclasses.is_dataclass(xs) or isinstance(xs, type):
+        msg = f"{type(xs).__name__} is not a dataclass instance"
+        raise TypeError(msg)
+    return {"class": type(xs).__name__, "params": dataclasses.asdict(xs)}
 
 
 @dataclass

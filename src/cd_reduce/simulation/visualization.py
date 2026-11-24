@@ -4,7 +4,7 @@ simulations.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 import numpy as np
 
@@ -12,6 +12,8 @@ from cd_reduce.reduction.mapping import ORDER_PALETTE, add_panel_label
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
+
+    from mpl_toolkits.mplot3d.axis3d import Axis as Axis3D
 
     from cd_reduce.simulation.born import BornSimulationResult2D, BornSimulationResult3D
     from cd_reduce.simulation.multislice import (
@@ -283,7 +285,7 @@ def plot_structure_3d_surface(
         if color is not None:
             out = np.broadcast_to(mcolors.to_rgba(color), (*values.shape, 4)).copy()
         else:
-            out = cm(norm(np.nan_to_num(values, nan=norm.vmin)))
+            out = cm(norm(np.nan_to_num(values, nan=float(norm.vmin or 0.0))))
         out[np.isnan(values)] = sub
         return out
 
@@ -338,9 +340,9 @@ def plot_structure_3d_surface(
 
     zmax = float(np.max(lift(height)))
     ax.set_box_aspect((np.ptp(x[ix]), np.ptp(y[iy]), max(zmax, 1e-6)), zoom=1.1)
-    ax.set_zticks([0.0, round(zmax)])
+    ax.zaxis.set_ticks([0.0, round(zmax)])
     if relief_scale != 1:
-        ax.set_zticklabels(["0", f"{base + (zmax - base) / relief_scale:.0f}"])
+        ax.zaxis.set_ticklabels(["0", f"{base + (zmax - base) / relief_scale:.0f}"])
     ax.view_init(elev=elev, azim=azim)
     ax.set_xlabel(r"$x$ (nm)")
     ax.set_ylabel(r"$y$ (nm)")
@@ -348,13 +350,13 @@ def plot_structure_3d_surface(
     if dark:
         ax.set_facecolor("#06121a")
         ax.figure.set_facecolor("#06121a")
-        for axis in (ax.xaxis, ax.yaxis, ax.zaxis):
+        for axis in cast("tuple[Axis3D, ...]", (ax.xaxis, ax.yaxis, ax.zaxis)):
             axis.set_pane_color((0, 0, 0, 0))
             axis.label.set_color("#d4d4d8")
             axis.line.set_color("#52525b")
         ax.tick_params(colors="#a1a1aa", labelsize=7)
         ax.grid(False)
-    ax.surface_norm = norm
+    setattr(ax, "surface_norm", norm)  # noqa: B010  (documented extra attribute)
     return ax
 
 

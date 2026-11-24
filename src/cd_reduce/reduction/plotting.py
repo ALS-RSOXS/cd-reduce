@@ -12,6 +12,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
+from typing import cast
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -20,7 +21,7 @@ from matplotlib.cm import ScalarMappable
 from matplotlib.colors import LogNorm, Normalize
 from matplotlib.figure import Figure
 
-from cd_reduce.reduction.geometry import Geometry, ewald_trace_qxqz
+from cd_reduce.reduction.geometry import ApproximationMode, Geometry, ewald_trace_qxqz
 from cd_reduce.reduction.mapping import (
     ORDER_PALETTE,
     QMap2D,
@@ -57,10 +58,10 @@ def plot_traces_by_omega(
     if ax is None:
         fig, ax = plt.subplots(figsize=(4.2, 4.6))
     else:
-        fig = ax.figure  # type: ignore[assignment]
+        fig = cast(Figure, ax.get_figure(root=True))
     oms = sorted(traces)
     if not oms:
-        return fig, ax  # type: ignore[return-value]
+        return fig, ax
     lo, hi = omega_range or (min(oms), max(oms))
     lim = max(abs(lo), abs(hi), 1e-6)
     norm = Normalize(-lim, lim) if lo < 0 < hi else Normalize(lo, hi)
@@ -112,7 +113,7 @@ def plot_traces_by_omega(
             fraction=0.05,
         )
         cb.set_label(r"$\omega$ (°)")
-    return fig, ax  # type: ignore[return-value]
+    return fig, ax
 
 
 def plot_rods_by_order(
@@ -133,7 +134,7 @@ def plot_rods_by_order(
     if ax is None:
         fig, ax = plt.subplots(figsize=(4.0, 4.6))
     else:
-        fig = ax.figure  # type: ignore[assignment]
+        fig = cast(Figure, ax.get_figure(root=True))
     pal = dict(ORDER_PALETTE) | dict(palette or {})
     seq = sorted((m for m in rods if m > 0), reverse=True) + sorted(
         (m for m in rods if m < 0), reverse=True
@@ -163,7 +164,7 @@ def plot_rods_by_order(
     ax.set_xlabel(r"$Q_z$ (nm$^{-1}$)")
     ax.set_ylabel(r"$\log_{10} I_m$ (offset)")
     ax.set_yticks([])
-    return fig, ax  # type: ignore[return-value]
+    return fig, ax
 
 
 def plot_qmap_grid(
@@ -228,7 +229,7 @@ def plot_qmap_grid(
                     ewald_omega_deg,
                     e_ev,
                     shape=detector_shape,
-                    approximation=qm.approximation,  # type: ignore[arg-type]
+                    approximation=cast(ApproximationMode, qm.approximation),
                 )
                 ax.plot(qx_t, qz_t, "--", color="white", lw=1.0)
             if labels is not None:

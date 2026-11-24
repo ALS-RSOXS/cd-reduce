@@ -1,7 +1,7 @@
 .PHONY: verify fix lint format format-check type-check install test test-cov validation docs docs-serve release-check
 
 # Verify: check everything without changing files
-verify: lint format-check test
+verify: lint format-check type-check test
 
 fix:
 	uv run ruff check --fix src tests
